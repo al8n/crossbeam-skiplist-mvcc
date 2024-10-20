@@ -1,24 +1,24 @@
-use core::{
-  mem::MaybeUninit,
-  ops::{Bound, RangeBounds, RangeToInclusive},
-};
+use core::ops::{Bound, RangeBounds, RangeToInclusive};
 
 use crossbeam_skiplist::{
   map::{Iter as CIter, Range as CRange},
   Comparable,
 };
 
-use super::{CSkipMap, Entry, CEntry, VersionedEntry};
+use super::{CEntry, Entry, VersionedEntry, Values};
 
 /// An iterator over the entries of a `SkipMap`.
 pub struct Iter<'a, K, V> {
-  iter: CIter<'a, K, CSkipMap<u64, MaybeUninit<V>>>,
+  iter: CIter<'a, K, Values<V>>,
   query_version: u64,
 }
 
 impl<'a, K, V> Iter<'a, K, V> {
-  pub(super) fn new(iter: CIter<'a, K, CSkipMap<u64, MaybeUninit<V>>>, query_version: u64) -> Self {
-    Self { iter, query_version }
+  pub(super) fn new(iter: CIter<'a, K, Values<V>>, query_version: u64) -> Self {
+    Self {
+      iter,
+      query_version,
+    }
   }
 }
 
@@ -37,7 +37,7 @@ where
         .value()
         .upper_bound(Bound::Included(&self.query_version));
       if let Some(value) = value {
-        if !value.value().as_ptr().is_null() {
+        if value.value().is_some() {
           return Some(Entry::new(entry, value, self.query_version));
         }
       }
@@ -58,7 +58,7 @@ where
         .value()
         .upper_bound(Bound::Included(&self.query_version));
       if let Some(value) = value {
-        if !value.value().as_ptr().is_null() {
+        if value.value().is_some() {
           return Some(Entry::new(entry, value, self.query_version));
         }
       }
@@ -72,7 +72,7 @@ where
   R: RangeBounds<Q>,
   Q: ?Sized + Comparable<K>,
 {
-  range: CRange<'a, Q, R, K, CSkipMap<u64, MaybeUninit<V>>>,
+  range: CRange<'a, Q, R, K, Values<V>>,
   query_version: u64,
 }
 
@@ -81,8 +81,14 @@ where
   R: RangeBounds<Q>,
   Q: ?Sized + Comparable<K>,
 {
-  pub(super) fn new(range: CRange<'a, Q, R, K, CSkipMap<u64, MaybeUninit<V>>>, query_version: u64) -> Self {
-    Self { range, query_version }
+  pub(super) fn new(
+    range: CRange<'a, Q, R, K, Values<V>>,
+    query_version: u64,
+  ) -> Self {
+    Self {
+      range,
+      query_version,
+    }
   }
 }
 
@@ -103,7 +109,7 @@ where
         .value()
         .upper_bound(Bound::Included(&self.query_version));
       if let Some(value) = value {
-        if !value.value().as_ptr().is_null() {
+        if value.value().is_some() {
           return Some(Entry::new(entry, value, self.query_version));
         }
       }
@@ -126,7 +132,7 @@ where
         .value()
         .upper_bound(Bound::Included(&self.query_version));
       if let Some(value) = value {
-        if !value.value().as_ptr().is_null() {
+        if value.value().is_some() {
           return Some(Entry::new(entry, value, self.query_version));
         }
       }
@@ -135,22 +141,19 @@ where
 }
 
 struct Latest<'a, K, V> {
-  values_iter: CRange<'a, u64, RangeToInclusive<u64>, u64, MaybeUninit<V>>,
-  ent: CEntry<'a, K, CSkipMap<u64, MaybeUninit<V>>>,
+  values_iter: CRange<'a, u64, RangeToInclusive<u64>, u64, Option<V>>,
+  ent: CEntry<'a, K, Values<V>>,
 }
 
 /// An iterator over the entries with all versions of a `SkipMap`.
 pub struct AllVersionsIter<'a, K, V> {
-  iter: CIter<'a, K, CSkipMap<u64, MaybeUninit<V>>>,
+  iter: CIter<'a, K, Values<V>>,
   latest: Option<Latest<'a, K, V>>,
   query_version: u64,
 }
 
 impl<'a, K, V> AllVersionsIter<'a, K, V> {
-  pub(super) fn new(
-    iter: CIter<'a, K, CSkipMap<u64, MaybeUninit<V>>>,
-    query_version: u64,
-  ) -> Self {
+  pub(super) fn new(iter: CIter<'a, K, Values<V>>, query_version: u64) -> Self {
     Self {
       latest: None,
       iter,
@@ -169,17 +172,19 @@ where
   fn next(&mut self) -> Option<Self::Item> {
     loop {
       match self.latest {
-        Some(ref mut latest) => {
-          match latest.values_iter.next_back() {
-            None => {
-              let ent = self.iter.next()?;
-              let values_iter = ent.value().range(..=self.query_version);
-              latest.values_iter = values_iter;
-              latest.ent = ent;
-            },
-            Some(value) => {
-              return Some(VersionedEntry::new(latest.ent.clone(), value, self.query_version));
-            },
+        Some(ref mut latest) => match latest.values_iter.next_back() {
+          None => {
+            let ent = self.iter.next()?;
+            let values_iter = ent.value().range(..=self.query_version);
+            latest.values_iter = values_iter;
+            latest.ent = ent;
+          }
+          Some(value) => {
+            return Some(VersionedEntry::new(
+              latest.ent.clone(),
+              value,
+              self.query_version,
+            ));
           }
         },
         None => {
@@ -187,7 +192,7 @@ where
           let values_iter = ent.value().range(..=self.query_version);
           let latest = Latest { values_iter, ent };
           self.latest = Some(latest);
-        },
+        }
       }
     }
   }
@@ -201,17 +206,19 @@ where
   fn next_back(&mut self) -> Option<Self::Item> {
     loop {
       match self.latest {
-        Some(ref mut latest) => {
-          match latest.values_iter.next() {
-            None => {
-              let ent = self.iter.next_back()?;
-              let values_iter = ent.value().range(..=self.query_version);
-              latest.values_iter = values_iter;
-              latest.ent = ent;
-            },
-            Some(value) => {
-              return Some(VersionedEntry::new(latest.ent.clone(), value, self.query_version));
-            },
+        Some(ref mut latest) => match latest.values_iter.next() {
+          None => {
+            let ent = self.iter.next_back()?;
+            let values_iter = ent.value().range(..=self.query_version);
+            latest.values_iter = values_iter;
+            latest.ent = ent;
+          }
+          Some(value) => {
+            return Some(VersionedEntry::new(
+              latest.ent.clone(),
+              value,
+              self.query_version,
+            ));
           }
         },
         None => {
@@ -219,7 +226,7 @@ where
           let values_iter = ent.value().range(..=self.query_version);
           let latest = Latest { values_iter, ent };
           self.latest = Some(latest);
-        },
+        }
       }
     }
   }
@@ -231,7 +238,7 @@ where
   R: RangeBounds<Q>,
   Q: ?Sized + Comparable<K>,
 {
-  iter: CRange<'a, Q, R, K, CSkipMap<u64, MaybeUninit<V>>>,
+  iter: CRange<'a, Q, R, K, Values<V>>,
   latest: Option<Latest<'a, K, V>>,
   query_version: u64,
 }
@@ -242,7 +249,7 @@ where
   Q: ?Sized + Comparable<K>,
 {
   pub(super) fn new(
-    iter: CRange<'a, Q, R, K, CSkipMap<u64, MaybeUninit<V>>>,
+    iter: CRange<'a, Q, R, K, Values<V>>,
     query_version: u64,
   ) -> Self {
     Self {
@@ -265,17 +272,19 @@ where
   fn next(&mut self) -> Option<Self::Item> {
     loop {
       match self.latest {
-        Some(ref mut latest) => {
-          match latest.values_iter.next_back() {
-            None => {
-              let ent = self.iter.next()?;
-              let values_iter = ent.value().range(..=self.query_version);
-              latest.values_iter = values_iter;
-              latest.ent = ent;
-            },
-            Some(value) => {
-              return Some(VersionedEntry::new(latest.ent.clone(), value, self.query_version));
-            },
+        Some(ref mut latest) => match latest.values_iter.next_back() {
+          None => {
+            let ent = self.iter.next()?;
+            let values_iter = ent.value().range(..=self.query_version);
+            latest.values_iter = values_iter;
+            latest.ent = ent;
+          }
+          Some(value) => {
+            return Some(VersionedEntry::new(
+              latest.ent.clone(),
+              value,
+              self.query_version,
+            ));
           }
         },
         None => {
@@ -283,7 +292,7 @@ where
           let values_iter = ent.value().range(..=self.query_version);
           let latest = Latest { values_iter, ent };
           self.latest = Some(latest);
-        },
+        }
       }
     }
   }
@@ -299,17 +308,19 @@ where
   fn next_back(&mut self) -> Option<Self::Item> {
     loop {
       match self.latest {
-        Some(ref mut latest) => {
-          match latest.values_iter.next() {
-            None => {
-              let ent = self.iter.next_back()?;
-              let values_iter = ent.value().range(..=self.query_version);
-              latest.values_iter = values_iter;
-              latest.ent = ent;
-            },
-            Some(value) => {
-              return Some(VersionedEntry::new(latest.ent.clone(), value, self.query_version));
-            },
+        Some(ref mut latest) => match latest.values_iter.next() {
+          None => {
+            let ent = self.iter.next_back()?;
+            let values_iter = ent.value().range(..=self.query_version);
+            latest.values_iter = values_iter;
+            latest.ent = ent;
+          }
+          Some(value) => {
+            return Some(VersionedEntry::new(
+              latest.ent.clone(),
+              value,
+              self.query_version,
+            ));
           }
         },
         None => {
@@ -317,7 +328,7 @@ where
           let values_iter = ent.value().range(..=self.query_version);
           let latest = Latest { values_iter, ent };
           self.latest = Some(latest);
-        },
+        }
       }
     }
   }

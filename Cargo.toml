@@ -20,10 +20,15 @@ std = []
 
 [dependencies]
 crossbeam-skiplist = { package = "crossbeam-skiplist-pr1132", version = "0.1" }
+crossbeam-utils = "0.8"
 
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3"
+
+[[test]]
+name = "mvcc"
+path = "tests/mvcc.rs"
 
 [profile.bench]
 opt-level = 3
