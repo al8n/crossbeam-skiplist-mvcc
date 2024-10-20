@@ -1,11 +1,11 @@
 [package]
-name = "template-rs"
+name = "crossbeam-skiplist-mvcc"
 version = "0.0.0"
 edition = "2021"
-repository = "https://github.com/al8n/template-rs"
-homepage = "https://github.com/al8n/template-rs"
-documentation = "https://docs.rs/template-rs"
-description = "A template for creating Rust open-source repo on GitHub"
+repository = "https://github.com/al8n/crossbeam-skiplist-mvcc"
+homepage = "https://github.com/al8n/crossbeam-skiplist-mvcc"
+documentation = "https://docs.rs/crossbeam-skiplist-mvcc"
+description = "Support MVCC (Multiple Version Concurrent Control) for `crossbeam-skiplist`."
 license = "MIT OR Apache-2.0"
 rust-version = "1.73"
 
@@ -16,10 +16,10 @@ harness = false
 
 [features]
 default = ["std"]
-alloc = []
 std = []
 
 [dependencies]
+crossbeam-skiplist = { package = "crossbeam-skiplist-pr1132", version = "0.1" }
 
 [dev-dependencies]
 criterion = "0.5"
