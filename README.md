@@ -43,16 +43,12 @@ There are two kinds of multiple version concurrent control `SkipMap`:
        1. Unlike `nested::SkipMap`, `flatten::SkipMap` will store the same key multiple times, so this may lead to high memory usage.
        2. Insertion, querying, and latest iterators may slower than `nested::SkipMap`
 
-
 ## Installation
 
 ```toml
 [dependencies]
 crossbeam_skiplist_mvcc = "0.1"
 ```
-
-
-
 
 #### License
 
@@ -61,7 +57,7 @@ Apache License (Version 2.0).
 
 See [LICENSE-APACHE](LICENSE-APACHE), [LICENSE-MIT](LICENSE-MIT) for details.
 
-Copyright (c) 2021 Al Liu.
+Copyright (c) 2024 Al Liu.
 
 [Github-url]: https://github.com/al8n/crossbeam-skiplist-mvcc/
 [CI-url]: https://github.com/al8n/crossbeam-skiplist-mvcc/actions/workflows/ci.yml

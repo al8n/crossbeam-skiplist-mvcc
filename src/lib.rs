@@ -1,4 +1,4 @@
-//! Support MVCC (Multiple Version Concurrent Control) for `crossbeam-skiplist`.
+#![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(docsrs, allow(unused_attributes))]
@@ -7,5 +7,5 @@
 /// A multiple version ordered map based on a lock-free skip list. See [`SkipMap`](crate::nested::SkipMap).
 pub mod nested;
 
-/// A flatten ordered map based on a lock-free skip list. See [`SkipMap`](crate::flatten::SkipMap).
+/// A multiple version ordered map based on a lock-free skip list. See [`SkipMap`](crate::flatten::SkipMap).
 pub mod flatten;

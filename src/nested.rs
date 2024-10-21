@@ -204,6 +204,8 @@ where
 type Values<V> = CSkipMap<u64, Option<V>>;
 
 /// A multiple version ordered map based on a lock-free skip list.
+///
+/// For the difference between `nested::SkipMap` and `flatten::SkipMap`, see the [crate-level documentation](crate).
 pub struct SkipMap<K, V> {
   inner: CSkipMap<K, Values<V>>,
   min_version: AtomicU64,

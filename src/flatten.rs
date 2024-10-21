@@ -246,6 +246,8 @@ where
 }
 
 /// A multiple version ordered map based on a lock-free skip list.
+///
+/// For the difference between `nested::SkipMap` and `flatten::SkipMap`, see the [crate-level documentation](crate).
 pub struct SkipMap<K, V> {
   inner: CSkipMap<Key<K>, Option<V>>,
   min_version: AtomicU64,

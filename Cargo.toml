@@ -1,6 +1,6 @@
 [package]
 name = "crossbeam-skiplist-mvcc"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/al8n/crossbeam-skiplist-mvcc"
 homepage = "https://github.com/al8n/crossbeam-skiplist-mvcc"
@@ -8,6 +8,8 @@ documentation = "https://docs.rs/crossbeam-skiplist-mvcc"
 description = "Support MVCC (Multiple Version Concurrent Control) for `crossbeam-skiplist`."
 license = "MIT OR Apache-2.0"
 rust-version = "1.77"
+keywords = ["crossbeam", "skiplist", "mvcc", "crossbeam-skiplist", "data-structure"]
+categories = ["data-structures", "concurrency", "development-tools", "database-implementations"]
 
 [[bench]]
 path = "benches/foo.rs"
