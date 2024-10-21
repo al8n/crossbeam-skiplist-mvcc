@@ -1,120 +1,166 @@
 use core::{
+  cmp,
   fmt::Debug,
+  marker::PhantomData,
   ops::{Bound, RangeBounds},
-  sync::atomic::{AtomicU8, AtomicU64, Ordering},
+  sync::atomic::{AtomicU64, Ordering},
 };
 
-use crossbeam_skiplist::{map::Entry as CEntry, Comparable, SkipMap as CSkipMap};
+use crossbeam_skiplist::{map::Entry as CEntry, Comparable, Equivalent, SkipMap as CSkipMap};
 
 mod iter;
 pub use iter::*;
 
-/// A reference-counted entry in a map.
-pub struct Entry<'a, K, V> {
-  ent: CEntry<'a, K, Values<V>>,
-  value: CEntry<'a, u64, Option<V>>,
-  query_version: u64,
+#[cfg(test)]
+mod tests;
+
+struct Key<K> {
+  key: K,
+  version: u64,
 }
 
-impl<K: Debug, V: Debug> Debug for Entry<'_, K, V> {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-    f.debug_struct("Entry")
-      .field("version", &self.version())
-      .field("key", self.key())
-      .field("value", self.value())
-      .finish()
+impl<K> Key<K> {
+  #[inline]
+  const fn new(key: K, version: u64) -> Self {
+    Self { key, version }
   }
 }
+
+impl<K> PartialEq for Key<K>
+where
+  K: PartialEq,
+{
+  #[inline]
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && self.version == other.version
+  }
+}
+
+impl<K> Eq for Key<K> where K: Eq {}
+
+impl<K> PartialOrd for Key<K>
+where
+  K: PartialOrd,
+{
+  #[inline]
+  fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+    self
+      .key
+      .partial_cmp(&other.key)
+      .map(|o| o.then_with(|| other.version.cmp(&self.version)))
+  }
+}
+
+impl<K> Ord for Key<K>
+where
+  K: Ord,
+{
+  #[inline]
+  fn cmp(&self, other: &Self) -> cmp::Ordering {
+    self
+      .key
+      .cmp(&other.key)
+      .then_with(|| other.version.cmp(&self.version))
+  }
+}
+
+struct Query<'a, Q: ?Sized, K: ?Sized> {
+  _m: PhantomData<K>,
+  query: &'a Q,
+  version: u64,
+}
+
+impl<'a, Q: ?Sized, K: ?Sized> Query<'a, Q, K> {
+  #[inline]
+  fn new(version: u64, query: &'a Q) -> Self {
+    Self {
+      _m: PhantomData,
+      query,
+      version,
+    }
+  }
+}
+
+impl<Q, K> Equivalent<Key<K>> for Query<'_, Q, K>
+where
+  Q: ?Sized + Equivalent<K>,
+{
+  #[inline]
+  fn equivalent(&self, key: &Key<K>) -> bool {
+    Equivalent::equivalent(self.query, &key.key) && key.version == self.version
+  }
+}
+
+impl<Q, K> Comparable<Key<K>> for Query<'_, Q, K>
+where
+  Q: ?Sized + Comparable<K>,
+{
+  #[inline]
+  fn compare(&self, key: &Key<K>) -> cmp::Ordering {
+    Comparable::compare(self.query, &key.key).then_with(|| key.version.cmp(&self.version))
+  }
+}
+
+/// A reference-counted entry in a map.
+pub struct Entry<'a, K, V>(VersionedEntry<'a, K, V>);
 
 impl<'a, K, V> Entry<'a, K, V> {
   /// Returns the version of the entry.
   #[inline]
   pub fn version(&self) -> u64 {
-    *self.value.key()
+    self.0.version()
   }
 
   /// Returns a reference to the key.
   #[inline]
   pub fn key(&self) -> &'a K {
-    self.ent.key()
+    self.0.key()
   }
 
   /// Returns a reference to the value.
   #[inline]
   pub fn value(&self) -> &'a V {
     self
-      .value
+      .0
       .value()
-      .as_ref()
       .expect("value is null, please report bug to https://github.com/al8n/crossbeam-skiplist-mvcc")
   }
 
   #[inline]
-  fn new(
-    ent: CEntry<'a, K, Values<V>>,
-    value: CEntry<'a, u64, Option<V>>,
-    query_version: u64,
-  ) -> Self {
-    Self {
-      ent,
-      value,
-      query_version,
-    }
+  fn new(entry: CEntry<'a, Key<K>, Option<V>>, query_version: u64) -> Self {
+    Self(VersionedEntry::new(entry, query_version))
   }
 }
 
-impl<'a, K, V> Entry<'a, K, V>
+impl<K, V> Entry<'_, K, V>
 where
   K: Ord,
 {
   /// Returns the next entry in the map.
-  pub fn next(&self) -> Option<Entry<'a, K, V>> {
-    let mut ent = self.ent.next();
-    loop {
-      match ent {
-        Some(entry) => {
-          let value = entry
-            .value()
-            .upper_bound(Bound::Included(&self.query_version));
-          match value {
-            Some(value) if value.value().is_some() => {
-              return Some(Entry::new(entry, value, self.query_version))
-            }
-            _ => ent = entry.next(),
-          }
-        }
-        None => return None,
-      }
-    }
+  pub fn next(&self) -> Option<Self> {
+    self.0.next_in(false).map(Entry)
   }
 
   /// Returns the previous entry in the map.
-  pub fn prev(&self) -> Option<Entry<'a, K, V>> {
-    let mut ent = self.ent.prev();
-    loop {
-      match ent {
-        Some(entry) => {
-          let value = entry
-            .value()
-            .upper_bound(Bound::Included(&self.query_version));
-          match value {
-            Some(value) if value.value().is_some() => {
-              return Some(Entry::new(entry, value, self.query_version))
-            }
-            _ => ent = entry.prev(),
-          }
-        }
-        None => return None,
-      }
-    }
+  pub fn prev(&self) -> Option<Self> {
+    self.0.prev_in(false).map(Entry)
   }
 }
 
 /// A reference-counted entry which may return optional value in a map.
 pub struct VersionedEntry<'a, K, V> {
-  ent: CEntry<'a, K, Values<V>>,
-  value: CEntry<'a, u64, Option<V>>,
+  ent: CEntry<'a, Key<K>, Option<V>>,
   query_version: u64,
+}
+
+impl<K, V> Clone for VersionedEntry<'_, K, V> {
+  #[inline]
+  fn clone(&self) -> Self {
+    Self {
+      ent: self.ent.clone(),
+      query_version: self.query_version,
+    }
+  }
 }
 
 impl<K: Debug, V: Debug> Debug for VersionedEntry<'_, K, V> {
@@ -131,149 +177,65 @@ impl<'a, K, V> VersionedEntry<'a, K, V> {
   /// Returns the version of the entry.
   #[inline]
   pub fn version(&self) -> u64 {
-    *self.value.key()
+    self.ent.key().version
   }
 
   /// Returns a reference to the key.
   #[inline]
   pub fn key(&self) -> &'a K {
-    self.ent.key()
+    &self.ent.key().key
   }
 
   /// Returns a reference to the value.
   #[inline]
   pub fn value(&self) -> Option<&'a V> {
-    self.value.value().as_ref()
+    self.ent.value().as_ref()
   }
 
   #[inline]
-  const fn new(
-    ent: CEntry<'a, K, Values<V>>,
-    value: CEntry<'a, u64, Option<V>>,
-    query_version: u64,
-  ) -> Self {
-    Self {
-      ent,
-      value,
-      query_version,
-    }
+  const fn new(ent: CEntry<'a, Key<K>, Option<V>>, query_version: u64) -> Self {
+    Self { ent, query_version }
   }
 }
 
-impl<'a, K, V> VersionedEntry<'a, K, V>
+impl<K, V> VersionedEntry<'_, K, V>
 where
   K: Ord,
 {
   /// Returns the next entry in the map.
-  pub fn next(&self) -> Option<VersionedEntry<'a, K, V>> {
-    let mut curr = self.ent.clone();
-    let mut next_value = self.value.prev();
-    loop {
-      match next_value {
-        Some(value) => {
-          return Some(VersionedEntry::new(curr, value, self.query_version));
-        }
-        None => {
-          curr = curr.next()?;
-          next_value = curr
-            .value()
-
-            .upper_bound(Bound::Included(&self.query_version));
-        }
-      }
-    }
+  pub fn next(&self) -> Option<Self> {
+    self.next_in(true)
   }
 
   /// Returns the previous entry in the map.
-  pub fn prev(&self) -> Option<VersionedEntry<'a, K, V>> {
-    let mut curr = self.ent.clone();
-    let mut next_value = self.value.next();
-    loop {
-      match next_value {
-        Some(value) => {
-          return Some(VersionedEntry::new(curr, value, self.query_version));
-        }
-        None => {
-          curr = curr.prev()?;
-          next_value = curr.value().range(..=self.query_version).next();
-        }
-      }
-    }
-  }
-}
-
-
-
-#[derive(Debug)]
-struct Values<V> {
-  op: AtomicU8,
-  values: CSkipMap<u64, Option<V>>,
-}
-
-impl<V> Values<V> {
-  const UNINITIALIZED: u8 = 0;
-  const LOCKED: u8 = 1;
-  const UNLOCKED: u8 = 2;
-
-  #[inline]
-  fn new() -> Self {
-    Self {
-      op: AtomicU8::new(Self::UNINITIALIZED),
-      values: CSkipMap::new(),
-    }
+  pub fn prev(&self) -> Option<Self> {
+    self.prev_in(true)
   }
 
-  #[inline]
-  fn lock(&self) {
-    // Spin lock is ok here because the lock is expected to be held for a very short time.
-    // and it is hardly contended.
-    let backoff = crossbeam_utils::Backoff::new();
-    loop {
-      match self
-        .op
-        .compare_exchange_weak(Self::UNLOCKED, Self::LOCKED, Ordering::SeqCst, Ordering::Acquire)
-      {
-        Ok(_) => return,
-        Err(old) => {
-          // If the current state is uninitialized, we can directly return.
-          // as we are based on SkipMap, let it to handle concurrent write is engouth.
-          if old == Self::UNINITIALIZED {
-            return;
-          }
-
-          // if the current state is locked, we should wait other thread to make progress.
-          backoff.snooze();
-        }
-      }
-    }
+  fn next_in(&self, all_versions: bool) -> Option<Self> {
+    if all_versions {
+      let nd = self.ent.next();
+        SkipMap::find_next(nd, self.query_version, |_| true)
+    } else {
+      let nd = self.ent.next();
+        SkipMap::find_next_max_version(nd, self.query_version, |_| true)
+    }.map(|ent| VersionedEntry::new(ent, self.query_version))
   }
 
-  #[inline]
-  fn try_lock(&self) -> bool {
-    self
-      .op
-      .compare_exchange(Self::UNLOCKED, Self::LOCKED, Ordering::AcqRel, Ordering::Relaxed)
-      .is_ok()
-  }
-
-  #[inline]
-  fn unlock(&self) {
-    self.op.store(Self::UNLOCKED, Ordering::Release);
-  }
-}
-
-impl<V> core::ops::Deref for Values<V> {
-  type Target = CSkipMap<u64, Option<V>>;
-
-  fn deref(&self) -> &Self::Target {
-    &self.values
+  fn prev_in(&self, all_versions: bool) -> Option<Self> {
+    if all_versions {
+      let nd = self.ent.prev();
+        SkipMap::find_prev(nd, self.query_version, |_| true)
+    } else {
+      let nd = self.ent.prev();
+        SkipMap::find_prev_max_version(nd, self.query_version, |_| true)
+    }.map(|ent| VersionedEntry::new(ent, self.query_version))
   }
 }
 
 /// A multiple version ordered map based on a lock-free skip list.
 pub struct SkipMap<K, V> {
-  inner: CSkipMap<K, Values<V>>,
-  last_discard_version: AtomicU64,
+  inner: CSkipMap<Key<K>, Option<V>>,
   min_version: AtomicU64,
   max_version: AtomicU64,
 }
@@ -300,7 +262,6 @@ impl<K, V> SkipMap<K, V> {
       inner: CSkipMap::new(),
       min_version: AtomicU64::new(u64::MAX),
       max_version: AtomicU64::new(0),
-      last_discard_version: AtomicU64::new(0),
     }
   }
 
@@ -309,6 +270,11 @@ impl<K, V> SkipMap<K, V> {
     let min_version = self.min_version.load(Ordering::Acquire);
     let max_version = self.max_version.load(Ordering::Acquire);
     (min_version..=max_version).contains(&version)
+  }
+
+  #[inline]
+  fn check_version(&self, version: u64) -> bool {
+    version < self.min_version.load(Ordering::Acquire)
   }
 
   fn update_versions(&self, version: u64) {
@@ -347,15 +313,20 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    match self.inner.get(key) {
-      Some(ent) => {
-        matches!(ent.value().upper_bound(Bound::Included(&version)), Some(ent) if ent.value().is_some())
-      }
+    if !self.check_version(version) {
+      return false;
+    }
+
+    match self
+      .inner
+      .upper_bound(Bound::Included(&Query::new(version, key)))
+    {
+      Some(entry) => entry.value().is_some(),
       None => false,
     }
   }
 
-  /// Returns `true` if the map contains a value for the specified key even though this entry already been marked as removed.
+  /// Returns `true` if the map contains a value for the specified key even though this entry already been marked as insert_tombstoned.
   ///
   /// ## Example
   ///
@@ -373,10 +344,14 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    match self.inner.get(key) {
-      Some(ent) => ent.value().upper_bound(Bound::Included(&version)).is_some(),
-      None => false,
+    if !self.check_version(version) {
+      return false;
     }
+
+    self
+      .inner
+      .upper_bound(Bound::Included(&Query::new(version, key)))
+      .is_some()
   }
 
   /// Returns an entry with the specified `key`.
@@ -399,19 +374,31 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    match self.inner.get(key) {
-      Some(ent) => {
-        let value = ent.value().upper_bound(Bound::Included(&version));
-        match value {
-          Some(value) if value.value().is_some() => Some(Entry::new(ent, value, version)),
-          _ => None,
+    if !self.check_version(version) {
+      return None;
+    }
+
+    match self
+      .inner
+      .upper_bound(Bound::Included(&Query::new(version, key)))
+    {
+      Some(entry) => {
+        let k = entry.key();
+        if !key.equivalent(&k.key) {
+          return None;
         }
+
+        if entry.value().is_none() {
+          return None;
+        }
+
+        Some(Entry::new(entry, version))
       }
-      _ => None,
+      None => None,
     }
   }
 
-  /// Returns an entry with the specified `key` even though this entry already been marked as removed.
+  /// Returns an entry with the specified `key` even though this entry already been marked as insert_tombstoned.
   ///
   /// This function returns an [`Entry`] which
   /// can be used to access the key's associated value.
@@ -425,7 +412,7 @@ where
   /// assert!(numbers.get_versioned(0, "six").is_none());
   ///
   /// numbers.insert(0, "six", 6);
-  /// numbers.remove(1, "six");
+  /// numbers.insert_tombstone(1, "six");
   ///
   /// assert!(numbers.get(1, "six").is_none());
   /// assert!(numbers.get_versioned(1, "six").unwrap().value().is_none());
@@ -434,12 +421,23 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    match self.inner.get(key) {
-      Some(ent) => {
-        let value = ent.value().upper_bound(Bound::Included(&version));
-        value.map(|value| VersionedEntry::new(ent, value, version))
+    if !self.check_version(version) {
+      return None;
+    }
+
+    match self
+      .inner
+      .upper_bound(Bound::Included(&Query::new(version, key)))
+    {
+      Some(entry) => {
+        let k = entry.key();
+        if !key.equivalent(&k.key) {
+          return None;
+        }
+
+        Some(VersionedEntry::new(entry, version))
       }
-      _ => None,
+      None => None,
     }
   }
 
@@ -474,22 +472,15 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    let mut ent = self.inner.lower_bound(bound);
-
-    loop {
-      match ent {
-        Some(entry) => {
-          let value = entry.value().upper_bound(Bound::Included(&version));
-          match value {
-            Some(value) if value.value().is_some() => {
-              return Some(Entry::new(entry, value, version))
-            }
-            _ => ent = entry.next(),
-          }
-        }
-        None => return None,
-      }
+    if !self.check_version(version) {
+      return None;
     }
+
+    self
+      .iter(version)
+      .0
+      .seek_lower_bound(bound)
+      .map(Entry)
   }
 
   /// Returns an `Entry` pointing to the lowest element whose key is above
@@ -527,20 +518,14 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    let mut ent = self.inner.lower_bound(bound);
-
-    loop {
-      match ent {
-        Some(entry) => {
-          let value = entry.value().upper_bound(Bound::Included(&version));
-          match value {
-            Some(value) => return Some(VersionedEntry::new(entry, value, version)),
-            _ => ent = entry.next(),
-          }
-        }
-        None => return None,
-      }
+    if !self.check_version(version) {
+      return None;
     }
+
+    self
+      .iter_all_versions(version)
+      .0
+      .seek_lower_bound(bound)
   }
 
   /// Returns an `Entry` pointing to the highest element whose key is below
@@ -571,22 +556,15 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    let mut ent = self.inner.upper_bound(bound);
-
-    loop {
-      match ent {
-        Some(entry) => {
-          let value = entry.value().upper_bound(Bound::Included(&version));
-          match value {
-            Some(value) if value.value().is_some() => {
-              return Some(Entry::new(entry, value, version))
-            }
-            _ => ent = entry.prev(),
-          }
-        }
-        None => return None,
-      }
+    if !self.check_version(version) {
+      return None;
     }
+
+    self
+      .iter(version)
+      .0
+      .seek_upper_bound(bound)
+      .map(Entry)
   }
 
   /// Returns an `Entry` pointing to the highest element whose key is below
@@ -621,20 +599,14 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    let mut ent = self.inner.upper_bound(bound);
-
-    loop {
-      match ent {
-        Some(entry) => {
-          let value = entry.value().upper_bound(Bound::Included(&version));
-          match value {
-            Some(value) => return Some(VersionedEntry::new(entry, value, version)),
-            _ => ent = entry.prev(),
-          }
-        }
-        None => return None,
-      }
+    if !self.check_version(version) {
+      return None;
     }
+
+    self
+      .iter_all_versions(version)
+      .0
+      .seek_upper_bound(bound)
   }
 
   /// Returns the entry with the smallest key.
@@ -654,20 +626,11 @@ where
   /// assert_eq!(*numbers.front(1).unwrap().value(), "five");
   /// ```
   pub fn front(&self, version: u64) -> Option<Entry<'_, K, V>> {
-    let mut curr = self.inner.front();
-
-    loop {
-      match curr {
-        Some(ent) => {
-          let value = ent.value().upper_bound(Bound::Included(&version));
-          match value {
-            Some(value) if value.value().is_some() => return Some(Entry::new(ent, value, version)),
-            _ => curr = ent.next(),
-          }
-        }
-        None => return None,
-      }
+    if !self.check_version(version) {
+      return None;
     }
+
+    self.iter(version).next()
   }
 
   /// Returns the entry with the smallest key.
@@ -687,20 +650,11 @@ where
   /// assert_eq!(*numbers.front_versioned(1).unwrap().value().unwrap(), "five");
   /// ```
   pub fn front_versioned(&self, version: u64) -> Option<VersionedEntry<'_, K, V>> {
-    let mut curr = self.inner.front();
-
-    loop {
-      match curr {
-        Some(ent) => {
-          let value = ent.value().upper_bound(Bound::Included(&version));
-          match value {
-            Some(value) => return Some(VersionedEntry::new(ent, value, version)),
-            _ => curr = ent.next(),
-          }
-        }
-        None => return None,
-      }
+    if !self.check_version(version) {
+      return None;
     }
+
+    self.iter_all_versions(version).next()
   }
 
   /// Returns the entry with the largest key.
@@ -720,20 +674,11 @@ where
   /// assert_eq!(*numbers.back(1).unwrap().value(), "six");
   /// ```
   pub fn back(&self, version: u64) -> Option<Entry<'_, K, V>> {
-    let mut curr = self.inner.back();
-
-    loop {
-      match curr {
-        Some(ent) => {
-          let value = ent.value().upper_bound(Bound::Included(&version));
-          match value {
-            Some(value) if value.value().is_some() => return Some(Entry::new(ent, value, version)),
-            _ => curr = ent.prev(),
-          }
-        }
-        None => return None,
-      }
+    if !self.check_version(version) {
+      return None;
     }
+
+    self.iter(version).next_back()
   }
 
   /// Returns the entry with the largest key.
@@ -753,20 +698,11 @@ where
   /// assert_eq!(*numbers.back_versioned(1).unwrap().value().unwrap(), "six");
   /// ```
   pub fn back_versioned(&self, version: u64) -> Option<VersionedEntry<'_, K, V>> {
-    let mut curr = self.inner.back();
-
-    loop {
-      match curr {
-        Some(ent) => {
-          let value = ent.value().range(..=version).next();
-          match value {
-            Some(value) => return Some(VersionedEntry::new(ent, value, version)),
-            _ => curr = ent.prev(),
-          }
-        }
-        None => return None,
-      }
+    if !self.check_version(version) {
+      return None;
     }
+
+    self.iter_all_versions(version).next_back()
   }
 
   /// Returns an iterator over all entries in the map,
@@ -793,12 +729,12 @@ where
   /// }
   /// ```
   pub fn iter(&self, version: u64) -> Iter<'_, K, V> {
-    Iter::new(self.inner.iter(), version)
+    Iter::new(self, version)
   }
 
   /// Returns an iterator over all entries (all versions) in the map.
   pub fn iter_all_versions(&self, version: u64) -> AllVersionsIter<'_, K, V> {
-    AllVersionsIter::new(self.inner.iter(), version)
+    AllVersionsIter::new(self, version)
   }
 
   /// Returns an iterator over a subset of entries in the map.
@@ -828,7 +764,7 @@ where
     R: RangeBounds<Q>,
     Q: ?Sized + Comparable<K>,
   {
-    Range::new(self.inner.range(range), version)
+    Range::new(range, self, version)
   }
 
   /// Returns an iterator over a subset of entries (with all versions) in the map.
@@ -837,7 +773,141 @@ where
     R: RangeBounds<Q>,
     Q: ?Sized + Comparable<K>,
   {
-    AllVersionsRange::new(self.inner.range(range), version)
+    AllVersionsRange::new(range, self, version)
+  }
+
+  fn find_next_max_version(
+    mut curr: Option<CEntry<'_, Key<K>, Option<V>>>,
+    version: u64,
+    contains_key: impl Fn(&K) -> bool,
+  ) -> Option<CEntry<'_, Key<K>, Option<V>>> {
+    while let Some(ent) = curr {
+      let curr_key = ent.key();
+      // if the current version is larger than the query version, we should move next to find a smaller version.
+      if curr_key.version > version {
+        curr = ent.next();
+        continue;
+      }
+
+      // if the entry with largest version is removed or the trailer is invalid, we should skip this key.
+      if ent.value().is_none() {
+        let mut next = ent.next();
+        loop {
+          match next {
+            None => return None,
+            Some(next_ent) => {
+              // if next's key is different from the current key, we should break the loop
+              if next_ent.key().key != curr_key.key {
+                curr = Some(next_ent);
+                break;
+              }
+
+              next = next_ent.next();
+            }
+          }
+        }
+
+        continue;
+      }
+
+      if contains_key(&curr_key.key) {
+        return Some(ent);
+      }
+
+      curr = ent.next();
+    }
+
+    None
+  }
+
+  fn find_next(
+    mut curr: Option<CEntry<'_, Key<K>, Option<V>>>,
+    version: u64,
+    contains_key: impl Fn(&K) -> bool,
+  ) -> Option<CEntry<'_, Key<K>, Option<V>>> {
+    while let Some(ent) = curr {
+      let curr_key = ent.key();
+      if curr_key.version > version {
+        curr = ent.next();
+        continue;
+      }
+
+      if contains_key(&curr_key.key) {
+        return Some(ent);
+      }
+
+      curr = ent.next();
+    }
+
+    None
+  }
+
+  fn find_prev_max_version(
+    mut curr: Option<CEntry<'_, Key<K>, Option<V>>>,
+    version: u64,
+    contains_key: impl Fn(&K) -> bool,
+  ) -> Option<CEntry<'_, Key<K>, Option<V>>> {
+    while let Some(ent) = curr {
+      let curr_key = ent.key();
+      if curr_key.version > version {
+        curr = ent.prev();
+        continue;
+      }
+
+      let prev = ent.prev();
+
+      match prev {
+        None => {
+          // prev is null or the head, we should try to see if we can return the current node.
+          if ent.value().is_some() {
+            // the current node is valid, we should return it.
+            if contains_key(&curr_key.key) {
+              return Some(ent);
+            }
+          }
+
+          return None;
+        }
+        Some(prev) => {
+          // At this point, prev is not null and not the head.
+          // if the prev's version is greater than the query version or the prev's key is different from the current key,
+          // we should try to return the current node.
+          let prev_key = prev.key();
+          if (prev_key.version > version || curr_key.key.ne(&prev_key.key))
+            && ent.value().is_some()
+            && contains_key(&curr_key.key)
+          {
+            return Some(prev);
+          }
+
+          curr = Some(prev);
+        }
+      }
+    }
+
+    None
+  }
+
+  fn find_prev(
+    mut curr: Option<CEntry<'_, Key<K>, Option<V>>>,
+    version: u64,
+    contains_key: impl Fn(&K) -> bool,
+  ) -> Option<CEntry<'_, Key<K>, Option<V>>> {
+    while let Some(ent) = curr {
+      let curr_key = ent.key();
+      if curr_key.version > version {
+        curr = ent.prev();
+        continue;
+      }
+
+      if contains_key(&curr_key.key) {
+        return Some(ent);
+      }
+
+      curr = ent.prev();
+    }
+
+    None
   }
 }
 
@@ -848,7 +918,7 @@ where
 {
   /// Inserts a `key`-`value` pair into the map and returns the new entry.
   ///
-  /// If there is an existing entry with this key, it will be removed before inserting the new
+  /// If there is an existing entry with this key, it will be insert_tombstoned before inserting the new
   /// one.
   ///
   /// This function returns an [`Entry`] which
@@ -865,30 +935,15 @@ where
   /// assert_eq!(*map.get(1, "key").unwrap().value(), "value");
   /// ```
   pub fn insert(&self, version: u64, key: K, value: V) -> Entry<'_, K, V> {
-    let mut exist = true;
-    let ent = self.inner.get_or_insert_with(key, || {
-      exist = false;
-      Values::new()
-    });
-    let values = ent.value();
-
-    if !exist {
-      values.lock();
-    }
-    
-    let value = ent.value().insert(version, Some(value));
-
-    if !exist {
-      values.unlock();
-    }
+    let ent = self.inner.insert(Key::new(key, version), Some(value));
     self.update_versions(version);
-    Entry::new(ent, value, version)
+    Entry::new(ent, version)
   }
 
   /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
   ///
   /// If there is an existing entry with this key and compare(entry.value) returns true,
-  /// it will be removed before inserting the new one.
+  /// it will be insert_tombstoned before inserting the new one.
   /// The closure will not be called if the key is not present.
   ///
   /// This function returns an [`Entry`] which
@@ -912,36 +967,23 @@ where
   where
     F: Fn(Option<&V>) -> bool,
   {
-    let mut exist = true;
-    let ent = self.inner.get_or_insert_with(key, || {
-      exist = false;
-      Values::new()
-    });
-    
-    let values = ent.value();
-    if !exist {
-      values.lock();
-    }
-
-    let value = values
-      .compare_insert(version, Some(value), |val| compare_fn(val.as_ref()));
-    
-    if !exist {
-      values.unlock();
-    }
-
+    let ent = self
+      .inner
+      .compare_insert(Key::new(key, version), Some(value), |old_value| {
+        compare_fn(old_value.as_ref())
+      });
     self.update_versions(version);
-    Entry::new(ent, value, version)
+    Entry::new(ent, version)
   }
 
-  /// Removes an entry with the specified `key` from the map and returns it.
+  /// Insert a tombstone entry for the specified `key` from the map and returns it.
   ///
-  /// Note that this will not actually remove the entry from the map,
-  /// but only insert a new entry and mark it as removed.
-  /// To actually remove entries with old versions, use [`compact`](SkipMap::compact).
+  /// Note that this will not actually insert_tombstone the entry from the map,
+  /// but only insert a new entry and mark it as insert_tombstoned.
+  /// To actually insert_tombstone entries with old versions, use [`compact`](SkipMap::compact).
   ///
   /// This function returns an [`Entry`] which
-  /// can be used to access the removed key's associated value.
+  /// can be used to access the insert_tombstoned key's associated value.
   ///
   /// ## Example
   ///
@@ -949,43 +991,20 @@ where
   /// use crossbeam_skiplist_mvcc::SkipMap;
   ///
   /// let map: SkipMap<&str, &str> = SkipMap::new();
-  /// assert!(map.remove(1, "invalid key").is_none());
+  /// assert!(map.insert_tombstone(1, "invalid key").is_none());
   ///
   /// map.insert(0, "key", "value");
-  /// assert_eq!(*map.remove(1, "key").unwrap().value(), "value");
+  /// assert_eq!(*map.insert_tombstone(1, "key").unwrap().value(), "value");
   /// ```
-  pub fn remove(&self, version: u64, key: K) -> Option<Entry<'_, K, V>> {
-    let mut exist = true;
-    let ent = self.inner.get_or_insert_with(key, || {
-      exist = false;
-      Values::new()
-    });
-    let values = ent.value();
-    if !exist {
-      values.lock();
-    }
-
-    let old = if values.is_empty() {
-      None
-    } else {
-      values
-        .upper_bound(Bound::Included(&version))
-        .and_then(|value| {
-          value
-            .value()
-            .is_some()
-            .then(|| Entry::new(ent, value, version))
-        })
-    };
-
-    values.insert(version, None);
-
-    if !exist {
-      values.unlock();
-    }
-
+  pub fn insert_tombstone(&self, version: u64, key: K) -> Option<Entry<'_, K, V>> {
+    let ent = self.inner.insert(Key::new(key, version), None);
     self.update_versions(version);
-    old
+    let next = ent.next()?;
+    if next.key().key.eq(&ent.key().key) && next.value().is_some() {
+      return Some(Entry::new(next, version));
+    }
+
+    None
   }
 
   /// Removes entries with versions less than or equal to `version`.
@@ -993,59 +1012,6 @@ where
   where
     V: Sync,
   {
-    match self
-      .last_discard_version
-      .fetch_update(Ordering::SeqCst, Ordering::Acquire, |val| {
-        if val >= version {
-          None
-        } else {
-          Some(version)
-        }
-      }) {
-      Ok(_) => {}
-      // if we fail to insert the new discard version,
-      // which means there is another thread that is compacting the database.
-      // To avoid run multiple compacting at the same time, we just return.
-      Err(_) => return,
-    }
-
-    let min_version = self.min_version.load(Ordering::Acquire);
-    for ent in self.inner.iter() {
-      let values = ent.value();
-      let mut inbound_values = values.range(..=version).rev();
-      let first = inbound_values.next();
-      if let Some(first) = first {
-        if first.value().is_none() {
-          first.remove();
-        }
-
-        for value in inbound_values {
-          value.remove();
-        }
-      }
-
-      if values.is_empty(){
-        // try to lock the entry.
-        if values.try_lock() {
-          // we get the lock, then we can remove the whole key.
-          ent.remove();
-
-          // unlock the entry.
-          values.unlock();
-          continue;
-        }
-      }
-    }
-
-    let _ =
-      self
-        .min_version
-        .compare_exchange(min_version, version, Ordering::AcqRel, Ordering::Relaxed);
-  }
-
-  fn check_version(&self, version: u64) {
-    if self.last_discard_version.load(Ordering::Acquire) > version {
-      panic!("version {} is less than the last discard version", version);
-    }
+    todo!()
   }
 }

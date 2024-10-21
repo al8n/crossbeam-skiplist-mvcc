@@ -7,7 +7,7 @@ homepage = "https://github.com/al8n/crossbeam-skiplist-mvcc"
 documentation = "https://docs.rs/crossbeam-skiplist-mvcc"
 description = "Support MVCC (Multiple Version Concurrent Control) for `crossbeam-skiplist`."
 license = "MIT OR Apache-2.0"
-rust-version = "1.73"
+rust-version = "1.77"
 
 [[bench]]
 path = "benches/foo.rs"
@@ -21,6 +21,8 @@ std = []
 [dependencies]
 crossbeam-skiplist = { package = "crossbeam-skiplist-pr1132", version = "0.1" }
 crossbeam-utils = "0.8"
+ref-cast = "1"
+
 
 [dev-dependencies]
 criterion = "0.5"

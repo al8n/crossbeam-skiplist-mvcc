@@ -5,7 +5,7 @@ use crossbeam_skiplist::{
   Comparable,
 };
 
-use super::{CEntry, Entry, VersionedEntry, Values};
+use super::{CEntry, Entry, Values, VersionedEntry};
 
 /// An iterator over the entries of a `SkipMap`.
 pub struct Iter<'a, K, V> {
@@ -81,10 +81,7 @@ where
   R: RangeBounds<Q>,
   Q: ?Sized + Comparable<K>,
 {
-  pub(super) fn new(
-    range: CRange<'a, Q, R, K, Values<V>>,
-    query_version: u64,
-  ) -> Self {
+  pub(super) fn new(range: CRange<'a, Q, R, K, Values<V>>, query_version: u64) -> Self {
     Self {
       range,
       query_version,
@@ -248,10 +245,7 @@ where
   R: RangeBounds<Q>,
   Q: ?Sized + Comparable<K>,
 {
-  pub(super) fn new(
-    iter: CRange<'a, Q, R, K, Values<V>>,
-    query_version: u64,
-  ) -> Self {
+  pub(super) fn new(iter: CRange<'a, Q, R, K, Values<V>>, query_version: u64) -> Self {
     Self {
       latest: None,
       iter,

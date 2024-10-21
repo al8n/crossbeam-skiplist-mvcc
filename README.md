@@ -17,12 +17,42 @@ Support MVCC (Multiple Version Concurrent Control) for `crossbeam-skiplist`.
 
 </div>
 
+## Introducation
+
+Support MVCC (Multiple Version Concurrent Control) for `crossbeam-skiplist`.
+
+There are two kinds of multiple version concurrent control `SkipMap`:
+
+1. `nested::SkipMap`
+
+    The inner is `SkipMap<K, SkipMap<u64, Option<V>>>`.
+
+    1. Pros
+        1. Fast latest iterators, fast read and write performance
+    2. Cons:
+        1. Once a key is inserted into the outer `SkipMap`, the compaction can only remove the values in the inner `SkipMap`,
+          this key cannot be removed any more. So, this may lead to high memory usage.
+
+2. `flatten::SkipMap`
+
+    The inner is `SkipMap<Key<K>, Option<V>>`.
+
+    1. Pros
+       1. Keys can be fully removed through compaction.
+    2. Cons
+       1. Unlike `nested::SkipMap`, `flatten::SkipMap` will store the same key multiple times, so this may lead to high memory usage.
+       2. Insertion, querying, and latest iterators may slower than `nested::SkipMap`
+
+
 ## Installation
 
 ```toml
 [dependencies]
 crossbeam_skiplist_mvcc = "0.1"
 ```
+
+
+
 
 #### License
 
