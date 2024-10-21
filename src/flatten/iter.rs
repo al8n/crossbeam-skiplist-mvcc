@@ -259,7 +259,7 @@ where
           .as_ref()
           .unwrap()
           .end_bound()
-          .map(|q| Query::new(self.version, q));
+          .map(|q| Query::new(0, q));
         self.map.inner.upper_bound(end_bound.as_ref())
       }
     };

@@ -331,7 +331,7 @@ where
 
     match self
       .inner
-      .upper_bound(Bound::Included(&Query::new(version, key)))
+      .lower_bound(Bound::Included(&Query::new(version, key)))
     {
       Some(entry) => {
         let k = entry.key();
@@ -373,7 +373,7 @@ where
 
     match self
       .inner
-      .upper_bound(Bound::Included(&Query::new(version, key)))
+      .lower_bound(Bound::Included(&Query::new(version, key)))
     {
       Some(entry) => {
         let k = entry.key();
@@ -413,7 +413,7 @@ where
 
     match self
       .inner
-      .upper_bound(Bound::Included(&Query::new(version, key)))
+      .lower_bound(Bound::Included(&Query::new(version, key)))
     {
       Some(entry) => {
         let k = entry.key();
@@ -460,7 +460,7 @@ where
 
     match self
       .inner
-      .upper_bound(Bound::Included(&Query::new(version, key)))
+      .lower_bound(Bound::Included(&Query::new(version, key)))
     {
       Some(entry) => {
         let k = entry.key();
