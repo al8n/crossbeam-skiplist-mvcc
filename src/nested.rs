@@ -223,7 +223,7 @@ impl<K, V> SkipMap<K, V> {
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let map: SkipMap<i32, i32> = SkipMap::new();
   /// ```
@@ -244,7 +244,7 @@ impl<K, V> SkipMap<K, V> {
 
   #[inline]
   fn check_version(&self, version: u64) -> bool {
-    version < self.min_version.load(Ordering::Acquire)
+    version >= self.min_version.load(Ordering::Acquire)
   }
 
   fn update_versions(&self, version: u64) {
@@ -270,7 +270,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let ages = SkipMap::new();
   /// ages.insert(0, "Bill Gates", 64);
@@ -295,12 +295,12 @@ where
     }
   }
 
-  /// Returns `true` if the map contains a value for the specified key even though this entry already been marked as insert_tombstoned.
+  /// Returns `true` if the map contains a value for the specified key even though this entry already been marked as removed.
   ///
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let ages = SkipMap::new();
   /// ages.insert(0, "Bill Gates", 64);
@@ -331,7 +331,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let numbers: SkipMap<&str, i32> = SkipMap::new();
   /// assert!(numbers.get(0, "six").is_none());
@@ -359,7 +359,7 @@ where
     }
   }
 
-  /// Returns an entry with the specified `key` even though this entry already been marked as insert_tombstoned.
+  /// Returns an entry with the specified `key` even though this entry already been marked as removed.
   ///
   /// This function returns an [`Entry`] which
   /// can be used to access the key's associated value.
@@ -367,13 +367,13 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let numbers: SkipMap<&str, i32> = SkipMap::new();
   /// assert!(numbers.get_versioned(0, "six").is_none());
   ///
   /// numbers.insert(0, "six", 6);
-  /// numbers.insert_tombstone(1, "six");
+  /// numbers.remove(1, "six");
   ///
   /// assert!(numbers.get(1, "six").is_none());
   /// assert!(numbers.get_versioned(1, "six").unwrap().value().is_none());
@@ -405,7 +405,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   /// use std::ops::Bound::*;
   ///
   /// let numbers = SkipMap::new();
@@ -458,7 +458,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   /// use std::ops::Bound::*;
   ///
   /// let numbers = SkipMap::new();
@@ -513,7 +513,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   /// use std::ops::Bound::*;
   ///
   /// let numbers = SkipMap::new();
@@ -563,7 +563,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   /// use std::ops::Bound::*;
   ///
   /// let numbers = SkipMap::new();
@@ -613,7 +613,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let numbers = SkipMap::new();
   /// numbers.insert(1, 5, "five");
@@ -650,7 +650,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let numbers = SkipMap::new();
   /// numbers.insert(1, 5, "five");
@@ -687,7 +687,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let numbers = SkipMap::new();
   /// numbers.insert(1, 5, "five");
@@ -697,6 +697,7 @@ where
   /// ```
   pub fn back(&self, version: u64) -> Option<Entry<'_, K, V>> {
     if !self.check_version(version) {
+      println!("min_version {}", self.min_version.load(Ordering::Acquire));
       return None;
     }
 
@@ -724,7 +725,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let numbers = SkipMap::new();
   /// numbers.insert(1, 5, "five");
@@ -762,7 +763,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let numbers = SkipMap::new();
   /// numbers.insert(1, 6, "six");
@@ -793,7 +794,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let numbers = SkipMap::new();
   /// numbers.insert(1, 6, "six");
@@ -832,7 +833,7 @@ where
 {
   /// Inserts a `key`-`value` pair into the map and returns the new entry.
   ///
-  /// If there is an existing entry with this key, it will be insert_tombstoned before inserting the new
+  /// If there is an existing entry with this key, it will be removed before inserting the new
   /// one.
   ///
   /// This function returns an [`Entry`] which
@@ -841,7 +842,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let map = SkipMap::new();
   /// map.insert(1, "key", "value");
@@ -862,7 +863,7 @@ where
   /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
   ///
   /// If there is an existing entry with this key and compare(entry.value) returns true,
-  /// it will be insert_tombstoned before inserting the new one.
+  /// it will be removed before inserting the new one.
   /// The closure will not be called if the key is not present.
   ///
   /// This function returns an [`Entry`] which
@@ -871,7 +872,7 @@ where
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let map = SkipMap::new();
   /// map.insert(1, "key", 1);
@@ -901,25 +902,25 @@ where
 
   /// Insert a tombstone entry for the specified `key` from the map and returns it.
   ///
-  /// Note that this will not actually insert_tombstone the entry from the map,
-  /// but only insert a new entry and mark it as insert_tombstoned.
-  /// To actually insert_tombstone entries with old versions, use [`compact`](SkipMap::compact).
+  /// Note that this will not actually remove the entry from the map,
+  /// but only insert a new entry and mark it as removed.
+  /// To actually remove entries with old versions, use [`compact`](SkipMap::compact).
   ///
   /// This function returns an [`Entry`] which
-  /// can be used to access the insert_tombstoned key's associated value.
+  /// can be used to access the removed key's associated value.
   ///
   /// ## Example
   ///
   /// ```rust
-  /// use crossbeam_skiplist_mvcc::SkipMap;
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
   ///
   /// let map: SkipMap<&str, &str> = SkipMap::new();
-  /// assert!(map.insert_tombstone(1, "invalid key").is_none());
+  /// assert!(map.remove(1, "invalid key").is_none());
   ///
   /// map.insert(0, "key", "value");
-  /// assert_eq!(*map.insert_tombstone(1, "key").unwrap().value(), "value");
+  /// assert_eq!(*map.remove(1, "key").unwrap().value(), "value");
   /// ```
-  pub fn insert_tombstone(&self, version: u64, key: K) -> Option<Entry<'_, K, V>> {
+  pub fn remove(&self, version: u64, key: K) -> Option<Entry<'_, K, V>> {
     let mut exist = true;
     let ent = self.inner.get_or_insert_with(key, || {
       exist = false;
@@ -949,29 +950,33 @@ where
   where
     V: Sync,
   {
-    if !self.check_version(version) {
-      return;
-    }
+    match self.check_version(version) {
+      false => {}
+      true => {
+        let min_version = self.min_version.load(Ordering::Acquire);
 
-    let min_version = self.min_version.load(Ordering::Acquire);
-    for ent in self.inner.iter() {
-      let values = ent.value();
-      let mut inbound_values = values.range(..=version).rev();
-      let first = inbound_values.next();
-      if let Some(first) = first {
-        if first.value().is_none() {
-          first.remove();
+        for ent in self.inner.iter() {
+          let values = ent.value();
+          let mut inbound_values = values.range(..=version).rev();
+          let first = inbound_values.next();
+          if let Some(first) = first {
+            if first.value().is_none() {
+              first.remove();
+            }
+
+            for value in inbound_values {
+              value.remove();
+            }
+          }
         }
 
-        for value in inbound_values {
-          value.remove();
-        }
+        let _ = self.min_version.compare_exchange(
+          min_version,
+          version,
+          Ordering::AcqRel,
+          Ordering::Relaxed,
+        );
       }
     }
-
-    let _ =
-      self
-        .min_version
-        .compare_exchange(min_version, version, Ordering::AcqRel, Ordering::Relaxed);
   }
 }

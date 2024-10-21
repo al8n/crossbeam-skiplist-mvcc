@@ -1,6 +1,6 @@
 use std::ops::Bound;
 
-use crossbeam_skiplist_mvcc::nested::SkipMap;
+use crossbeam_skiplist_mvcc::flatten::SkipMap;
 
 #[test]
 fn basic() {
@@ -501,7 +501,7 @@ fn all_versions_iter_forwards() {
   let map = SkipMap::new();
   for i in 0..N {
     map.insert(0, i, i);
-    map.insert_tombstone(1, i);
+    map.remove(1, i);
   }
 
   let it = map.iter_all_versions(0);
@@ -545,7 +545,7 @@ fn all_versions_iter_backwards() {
   let map = SkipMap::new();
   for i in 0..N {
     map.insert(0, i, i);
-    map.insert_tombstone(1, i);
+    map.remove(1, i);
   }
 
   let it = map.iter_all_versions(0).rev();
@@ -584,7 +584,7 @@ fn cursor_forwards() {
   let map = SkipMap::new();
   for i in 0..N {
     map.insert(0, i, i);
-    map.insert_tombstone(1, i);
+    map.remove(1, i);
   }
 
   let mut ent = map.front(0);
@@ -626,7 +626,7 @@ fn cursor_backwards() {
   let map = SkipMap::new();
   for i in 0..N {
     map.insert(0, i, i);
-    map.insert_tombstone(1, i);
+    map.remove(1, i);
   }
 
   let mut ent = map.back(0);
@@ -666,7 +666,7 @@ fn range_forwards() {
   let map = SkipMap::new();
   for i in 0..N {
     map.insert(0, i, i);
-    map.insert_tombstone(1, i);
+    map.remove(1, i);
   }
 
   let it = map.range(0, ..=50);
@@ -709,7 +709,7 @@ fn range_backwards() {
   let map = SkipMap::new();
   for i in 0..N {
     map.insert(0, i, i);
-    map.insert_tombstone(1, i);
+    map.remove(1, i);
   }
 
   let it = map.range(0, ..=50).rev();

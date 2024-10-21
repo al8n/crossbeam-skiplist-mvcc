@@ -357,10 +357,7 @@ where
     QR: ?Sized + Comparable<K>,
   {
     let q = Query::new(self.version, key);
-    let n = self
-      .map
-      .inner
-      .lower_bound(Bound::Included(&q)); // find the key with the max version.
+    let n = self.map.inner.lower_bound(Bound::Included(&q)); // find the key with the max version.
 
     if self.all_versions {
       SkipMap::find_next(n, self.version, |nk| {
@@ -372,13 +369,14 @@ where
       })
     } else {
       SkipMap::find_next_max_version(n, self.version, |nk| {
-          if let Some(ref range) = self.range {
-            range.compare_contains(nk)
-          } else {
-            true
-          }
-        })
-    }.map(|ent| VersionedEntry::new(ent, self.version))
+        if let Some(ref range) = self.range {
+          range.compare_contains(nk)
+        } else {
+          true
+        }
+      })
+    }
+    .map(|ent| VersionedEntry::new(ent, self.version))
   }
 
   /// Moves the iterator to the first entry whose key is greater than
@@ -389,10 +387,7 @@ where
     QR: ?Sized + Comparable<K>,
   {
     let q = Query::new(0, key);
-    let n = self
-      .map
-      .inner
-      .lower_bound(Bound::Excluded(&q));
+    let n = self.map.inner.lower_bound(Bound::Excluded(&q));
 
     if self.all_versions {
       SkipMap::find_next(n, self.version, |nk| {
@@ -404,13 +399,14 @@ where
       })
     } else {
       SkipMap::find_next_max_version(n, self.version, |nk| {
-          if let Some(ref range) = self.range {
-            range.compare_contains(nk)
-          } else {
-            true
-          }
-        })
-    }.map(|ent| VersionedEntry::new(ent, self.version))
+        if let Some(ref range) = self.range {
+          range.compare_contains(nk)
+        } else {
+          true
+        }
+      })
+    }
+    .map(|ent| VersionedEntry::new(ent, self.version))
   }
 
   /// Moves the iterator to the first entry whose key is less than or

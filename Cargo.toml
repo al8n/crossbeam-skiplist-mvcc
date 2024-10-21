@@ -20,17 +20,18 @@ std = []
 
 [dependencies]
 crossbeam-skiplist = { package = "crossbeam-skiplist-pr1132", version = "0.1" }
-crossbeam-utils = "0.8"
-ref-cast = "1"
-
 
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3"
 
 [[test]]
-name = "mvcc"
-path = "tests/mvcc.rs"
+name = "nested"
+path = "tests/nested.rs"
+
+[[test]]
+name = "flatten"
+path = "tests/flatten.rs"
 
 [profile.bench]
 opt-level = 3
