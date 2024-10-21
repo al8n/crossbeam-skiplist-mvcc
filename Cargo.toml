@@ -1,13 +1,15 @@
 [package]
-name = "template-rs"
-version = "0.0.0"
+name = "crossbeam-skiplist-mvcc"
+version = "0.1.0"
 edition = "2021"
-repository = "https://github.com/al8n/template-rs"
-homepage = "https://github.com/al8n/template-rs"
-documentation = "https://docs.rs/template-rs"
-description = "A template for creating Rust open-source repo on GitHub"
+repository = "https://github.com/al8n/crossbeam-skiplist-mvcc"
+homepage = "https://github.com/al8n/crossbeam-skiplist-mvcc"
+documentation = "https://docs.rs/crossbeam-skiplist-mvcc"
+description = "Support MVCC (Multiple Version Concurrent Control) for `crossbeam-skiplist`."
 license = "MIT OR Apache-2.0"
-rust-version = "1.73"
+rust-version = "1.77"
+keywords = ["crossbeam", "skiplist", "mvcc", "crossbeam-skiplist", "data-structure"]
+categories = ["data-structures", "concurrency", "development-tools", "database-implementations"]
 
 [[bench]]
 path = "benches/foo.rs"
@@ -16,14 +18,22 @@ harness = false
 
 [features]
 default = ["std"]
-alloc = []
 std = []
 
 [dependencies]
+crossbeam-skiplist = { package = "crossbeam-skiplist-pr1132", version = "0.1" }
 
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3"
+
+[[test]]
+name = "nested"
+path = "tests/nested.rs"
+
+[[test]]
+name = "flatten"
+path = "tests/flatten.rs"
 
 [profile.bench]
 opt-level = 3
