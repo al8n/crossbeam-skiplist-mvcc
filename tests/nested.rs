@@ -5,9 +5,9 @@ use crossbeam_skiplist_mvcc::nested::SkipMap;
 #[test]
 fn basic() {
   let map = SkipMap::new();
-  map.insert(0, "key1", 1);
-  map.insert(0, "key3", 3);
-  map.insert(0, "key2", 2);
+  map.insert(0, "key1", 1).unwrap();
+  map.insert(0, "key3", 3).unwrap();
+  map.insert(0, "key2", 2).unwrap();
 
   {
     let it = map.iter_all_versions(0);
@@ -18,8 +18,8 @@ fn basic() {
     }
   }
 
-  map.insert(1, "a", 1);
-  map.insert(2, "a", 2);
+  map.insert_unchecked(1, "a", 1);
+  map.insert_unchecked(2, "a", 2);
 
   {
     let mut it = map.iter_all_versions(2);
@@ -34,8 +34,8 @@ fn basic() {
     assert_eq!(ent.value().unwrap(), &1);
   }
 
-  map.insert(2, "b", 2);
-  map.insert(1, "b", 1);
+  map.insert_unchecked(2, "b", 2);
+  map.insert_unchecked(1, "b", 1);
 
   {
     let mut it = map.range_all_versions(2, "b"..);
@@ -55,10 +55,10 @@ fn basic() {
 #[test]
 fn iter_all_versions_mvcc() {
   let map = SkipMap::new();
-  map.insert(1, "a", "a1");
-  map.insert(3, "a", "a2");
-  map.insert(1, "c", "c1");
-  map.insert(3, "c", "c2");
+  map.insert_unchecked(1, "a", "a1");
+  map.insert_unchecked(3, "a", "a2");
+  map.insert_unchecked(1, "c", "c1");
+  map.insert_unchecked(3, "c", "c2");
 
   let mut it = map.iter_all_versions(0);
   let mut num = 0;
@@ -115,10 +115,10 @@ fn iter_all_versions_mvcc() {
 #[test]
 fn get_mvcc() {
   let map = SkipMap::new();
-  map.insert(1, "a", "a1");
-  map.insert(3, "a", "a2");
-  map.insert(1, "c", "c1");
-  map.insert(3, "c", "c2");
+  map.insert_unchecked(1, "a", "a1");
+  map.insert_unchecked(3, "a", "a2");
+  map.insert_unchecked(1, "c", "c1");
+  map.insert_unchecked(3, "c", "c2");
 
   let ent = map.get(1, "a").unwrap();
   assert_eq!(ent.version(), 1);
@@ -172,11 +172,11 @@ fn get_mvcc() {
 #[test]
 fn gt() {
   let map = SkipMap::new();
-  map.insert(1, "a", "a1");
-  map.insert(3, "a", "a2");
-  map.insert(1, "c", "c1");
-  map.insert(3, "c", "c2");
-  map.insert(5, "c", "c3");
+  map.insert_unchecked(1, "a", "a1");
+  map.insert_unchecked(3, "a", "a2");
+  map.insert_unchecked(1, "c", "c1");
+  map.insert_unchecked(3, "c", "c2");
+  map.insert_unchecked(5, "c", "c3");
 
   let ent = map.lower_bound(1, Bound::Excluded("")).unwrap();
   assert_eq!(ent.version(), 1);
@@ -249,10 +249,10 @@ fn gt() {
 #[test]
 fn ge() {
   let map = SkipMap::new();
-  map.insert(1, "a", "a1");
-  map.insert(3, "a", "a2");
-  map.insert(1, "c", "c1");
-  map.insert(3, "c", "c2");
+  map.insert_unchecked(1, "a", "a1");
+  map.insert_unchecked(3, "a", "a2");
+  map.insert_unchecked(1, "c", "c1");
+  map.insert_unchecked(3, "c", "c2");
 
   assert!(map.lower_bound(0, Bound::Included("a")).is_none());
   assert!(map.lower_bound(0, Bound::Included("b")).is_none());
@@ -328,10 +328,10 @@ fn ge() {
 #[test]
 fn le() {
   let map = SkipMap::new();
-  map.insert(1, "a", "a1");
-  map.insert(3, "a", "a2");
-  map.insert(1, "c", "c1");
-  map.insert(3, "c", "c2");
+  map.insert_unchecked(1, "a", "a1");
+  map.insert_unchecked(3, "a", "a2");
+  map.insert_unchecked(1, "c", "c1");
+  map.insert_unchecked(3, "c", "c2");
 
   assert!(map.upper_bound(0, Bound::Included("a")).is_none());
   assert!(map.upper_bound(0, Bound::Included("b")).is_none());
@@ -422,10 +422,10 @@ fn le() {
 fn lt() {
   let map = SkipMap::new();
 
-  map.insert(1, "a", "a1");
-  map.insert(3, "a", "a2");
-  map.insert(1, "c", "c1");
-  map.insert(3, "c", "c2");
+  map.insert_unchecked(1, "a", "a1");
+  map.insert_unchecked(3, "a", "a2");
+  map.insert_unchecked(1, "c", "c1");
+  map.insert_unchecked(3, "c", "c2");
 
   assert!(map.upper_bound(0, Bound::Excluded("a")).is_none());
   assert!(map.upper_bound(0, Bound::Excluded("b")).is_none());
@@ -500,8 +500,8 @@ fn all_versions_iter_forwards() {
 
   let map = SkipMap::new();
   for i in 0..N {
-    map.insert(0, i, i);
-    map.remove(1, i);
+    map.insert_unchecked(0, i, i);
+    map.remove(1, i).unwrap();
   }
 
   let it = map.iter_all_versions(0);
@@ -544,8 +544,8 @@ fn all_versions_iter_backwards() {
 
   let map = SkipMap::new();
   for i in 0..N {
-    map.insert(0, i, i);
-    map.remove(1, i);
+    map.insert_unchecked(0, i, i);
+    map.remove_unchecked(1, i);
   }
 
   let it = map.iter_all_versions(0).rev();
@@ -583,8 +583,8 @@ fn cursor_forwards() {
 
   let map = SkipMap::new();
   for i in 0..N {
-    map.insert(0, i, i);
-    map.remove(1, i);
+    map.insert_unchecked(0, i, i);
+    map.remove_unchecked(1, i);
   }
 
   let mut ent = map.front(0);
@@ -625,8 +625,8 @@ fn cursor_backwards() {
 
   let map = SkipMap::new();
   for i in 0..N {
-    map.insert(0, i, i);
-    map.remove(1, i);
+    map.insert_unchecked(0, i, i);
+    map.remove_unchecked(1, i);
   }
 
   let mut ent = map.back(0);
@@ -665,8 +665,8 @@ fn range_forwards() {
 
   let map = SkipMap::new();
   for i in 0..N {
-    map.insert(0, i, i);
-    map.remove(1, i);
+    map.insert_unchecked(0, i, i);
+    map.remove_unchecked(1, i);
   }
 
   let it = map.range(0, ..=50);
@@ -708,8 +708,8 @@ fn range_backwards() {
 
   let map = SkipMap::new();
   for i in 0..N {
-    map.insert(0, i, i);
-    map.remove(1, i);
+    map.insert_unchecked(0, i, i);
+    map.remove_unchecked(1, i);
   }
 
   let it = map.range(0, ..=50).rev();
@@ -747,15 +747,15 @@ fn iter_latest() {
 
   let map = SkipMap::new();
   for i in 0..N {
-    map.insert(0, i, i);
+    map.insert_unchecked(0, i, i);
   }
 
   for i in 50..N {
-    map.insert(1, i, i + 1000);
+    map.insert_unchecked(1, i, i + 1000);
   }
 
   for i in 0..50 {
-    map.insert(2, i, i + 1000);
+    map.insert_unchecked(2, i, i + 1000);
   }
 
   let mut it = map.iter(4);
@@ -782,15 +782,15 @@ fn range_latest() {
 
   let map = SkipMap::new();
   for i in 0..N {
-    map.insert(0, i, i);
+    map.insert_unchecked(0, i, i);
   }
 
   for i in 50..N {
-    map.insert(1, i, i + 1000);
+    map.insert_unchecked(1, i, i + 1000);
   }
 
   for i in 0..50 {
-    map.insert(2, i, i + 1000);
+    map.insert_unchecked(2, i, i + 1000);
   }
 
   let mut it = map.range::<usize, _>(4, ..);
@@ -809,4 +809,21 @@ fn range_latest() {
   }
 
   assert_eq!(num, N);
+}
+
+#[test]
+fn compact() {
+  let map = SkipMap::new();
+
+  map.insert_unchecked(1, "a", "a1");
+  map.insert_unchecked(3, "a", "a2");
+  map.insert_unchecked(1, "c", "c1");
+  map.insert_unchecked(3, "c", "c2");
+
+  let version = map.compact(2);
+  assert_eq!(version, 2);
+
+  for ent in map.iter_all_versions(3) {
+    assert_eq!(ent.version(), 3);
+  }
 }

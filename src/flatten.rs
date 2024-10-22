@@ -11,6 +11,8 @@ use crossbeam_skiplist::{map::Entry as CEntry, Comparable, Equivalent, SkipMap a
 mod iter;
 pub use iter::*;
 
+use crate::error::Error;
+
 #[cfg(test)]
 mod tests;
 
@@ -111,6 +113,13 @@ impl<K: Debug, V: Debug> Debug for Entry<'_, K, V> {
       .field("key", self.key())
       .field("value", &self.value())
       .finish()
+  }
+}
+
+impl<K, V> Clone for Entry<'_, K, V> {
+  #[inline]
+  fn clone(&self) -> Self {
+    Self(self.0.clone())
   }
 }
 
@@ -252,6 +261,7 @@ pub struct SkipMap<K, V> {
   inner: CSkipMap<Key<K>, Option<V>>,
   min_version: AtomicU64,
   max_version: AtomicU64,
+  last_discard_version: AtomicU64,
 }
 
 impl<K, V> Default for SkipMap<K, V> {
@@ -276,18 +286,13 @@ impl<K, V> SkipMap<K, V> {
       inner: CSkipMap::new(),
       min_version: AtomicU64::new(u64::MAX),
       max_version: AtomicU64::new(0),
+      last_discard_version: AtomicU64::new(0),
     }
   }
 
   /// Returns `true` if the map may contain a value for the specified version.
-  pub fn contains_version(&self, version: u64) -> bool {
-    let min_version = self.min_version.load(Ordering::Acquire);
-    let max_version = self.max_version.load(Ordering::Acquire);
-    (min_version..=max_version).contains(&version)
-  }
-
   #[inline]
-  fn check_version(&self, version: u64) -> bool {
+  pub fn may_contain_version(&self, version: u64) -> bool {
     version >= self.min_version.load(Ordering::Acquire)
   }
 
@@ -327,7 +332,7 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return false;
     }
 
@@ -360,16 +365,18 @@ where
   ///
   /// let ages = SkipMap::new();
   /// ages.insert(0, "Bill Gates", 64);
+  /// ages.remove(1, "Bill Gates");
   ///
-  /// assert!(ages.contains_key(0, &"Bill Gates"));
-  /// assert!(!ages.contains_key(0, &"Steve Jobs"));
+  /// assert!(ages.contains_key_versioned(0, &"Bill Gates"));
+  /// assert!(ages.contains_key_versioned(1, &"Bill Gates"));
+  /// assert!(!ages.contains_key_versioned(1, &"Steve Jobs"));
   /// ```
   #[inline]
   pub fn contains_key_versioned<Q>(&self, version: u64, key: &Q) -> bool
   where
     Q: ?Sized + Comparable<K>,
   {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return false;
     }
 
@@ -409,7 +416,7 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return None;
     }
 
@@ -456,7 +463,7 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return None;
     }
 
@@ -507,7 +514,7 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return None;
     }
 
@@ -549,7 +556,7 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return None;
     }
 
@@ -584,7 +591,7 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return None;
     }
 
@@ -623,7 +630,7 @@ where
   where
     Q: ?Sized + Comparable<K>,
   {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return None;
     }
 
@@ -647,7 +654,7 @@ where
   /// assert_eq!(*numbers.front(1).unwrap().value(), "five");
   /// ```
   pub fn front(&self, version: u64) -> Option<Entry<'_, K, V>> {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return None;
     }
 
@@ -671,7 +678,7 @@ where
   /// assert_eq!(*numbers.front_versioned(1).unwrap().value().unwrap(), "five");
   /// ```
   pub fn front_versioned(&self, version: u64) -> Option<VersionedEntry<'_, K, V>> {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return None;
     }
 
@@ -695,7 +702,7 @@ where
   /// assert_eq!(*numbers.back(1).unwrap().value(), "six");
   /// ```
   pub fn back(&self, version: u64) -> Option<Entry<'_, K, V>> {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return None;
     }
 
@@ -719,7 +726,7 @@ where
   /// assert_eq!(*numbers.back_versioned(1).unwrap().value().unwrap(), "six");
   /// ```
   pub fn back_versioned(&self, version: u64) -> Option<VersionedEntry<'_, K, V>> {
-    if !self.check_version(version) {
+    if !self.may_contain_version(version) {
       return None;
     }
 
@@ -937,57 +944,21 @@ where
   K: Ord + Send + 'static,
   V: Send + 'static,
 {
-  /// Inserts a `key`-`value` pair into the map and returns the new entry.
-  ///
-  /// If there is an existing entry with this key, it will be removed before inserting the new
-  /// one.
-  ///
-  /// This function returns an [`Entry`] which
-  /// can be used to access the inserted key's associated value.
-  ///
-  /// ## Example
-  ///
-  /// ```rust
-  /// use crossbeam_skiplist_mvcc::flatten::SkipMap;
-  ///
-  /// let map = SkipMap::new();
-  /// map.insert(1, "key", "value");
-  ///
-  /// assert_eq!(*map.get(1, "key").unwrap().value(), "value");
-  /// ```
-  pub fn insert(&self, version: u64, key: K, value: V) -> Entry<'_, K, V> {
+  common!("flatten");
+
+  fn insert_in(&self, version: u64, key: K, value: V) -> Entry<'_, K, V> {
     let ent = self.inner.insert(Key::new(key, version), Some(value));
     self.update_versions(version);
     Entry::new(ent, version)
   }
 
-  /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
-  ///
-  /// If there is an existing entry with this key and compare(entry.value) returns true,
-  /// it will be removed before inserting the new one.
-  /// The closure will not be called if the key is not present.
-  ///
-  /// This function returns an [`Entry`] which
-  /// can be used to access the inserted key's associated value.
-  ///
-  /// ## Example
-  ///
-  /// ```rust
-  /// use crossbeam_skiplist_mvcc::flatten::SkipMap;
-  ///
-  /// let map = SkipMap::new();
-  /// map.insert(1, "key", 1);
-  /// map.compare_insert(1, "key", 0, |x| x.unwrap() < &0);
-  /// assert_eq!(*map.get(1, "key").unwrap().value(), 1);
-  /// map.compare_insert(1, "key", 2, |x| x.unwrap() < &2);
-  /// assert_eq!(*map.get(1, "key").unwrap().value(), 2);
-  /// map.compare_insert(1, "absent_key", 0, |_| false);
-  /// assert_eq!(*map.get(1, "absent_key").unwrap().value(), 0);
-  /// ```
-  pub fn compare_insert<F>(&self, version: u64, key: K, value: V, compare_fn: F) -> Entry<'_, K, V>
-  where
-    F: Fn(Option<&V>) -> bool,
-  {
+  fn compare_insert_in(
+    &self,
+    version: u64,
+    key: K,
+    value: V,
+    compare_fn: impl Fn(Option<&V>) -> bool,
+  ) -> Entry<'_, K, V> {
     let ent = self
       .inner
       .compare_insert(Key::new(key, version), Some(value), |old_value| {
@@ -997,27 +968,8 @@ where
     Entry::new(ent, version)
   }
 
-  /// Insert a tombstone entry for the specified `key` from the map and returns it.
-  ///
-  /// Note that this will not actually remove the entry from the map,
-  /// but only insert a new entry and mark it as removed.
-  /// To actually remove entries with old versions, use [`compact`](SkipMap::compact).
-  ///
-  /// This function returns an [`Entry`] which
-  /// can be used to access the removed key's associated value.
-  ///
-  /// ## Example
-  ///
-  /// ```rust
-  /// use crossbeam_skiplist_mvcc::flatten::SkipMap;
-  ///
-  /// let map: SkipMap<&str, &str> = SkipMap::new();
-  /// assert!(map.remove(1, "invalid key").is_none());
-  ///
-  /// map.insert(0, "key", "value");
-  /// assert_eq!(*map.remove(1, "key").unwrap().value(), "value");
-  /// ```
-  pub fn remove(&self, version: u64, key: K) -> Option<Entry<'_, K, V>> {
+  #[inline]
+  fn remove_in(&self, version: u64, key: K) -> Option<Entry<'_, K, V>> {
     let ent = self.inner.insert(Key::new(key, version), None);
     self.update_versions(version);
     let next = ent.next()?;
@@ -1029,27 +981,42 @@ where
   }
 
   /// Removes entries with versions less than or equal to `version`.
-  pub fn compact(&self, version: u64)
+  ///
+  /// Returns the current version that `SkipMap` is compacting to.
+  ///
+  /// **Note**: If there is another thread is compacting, this function will just return the version that the other thread is compacting to.
+  /// So the return value may not be the version that you passed in.
+  pub fn compact(&self, version: u64) -> u64
   where
     V: Sync,
   {
-    match self.check_version(version) {
-      false => {}
-      true => {
-        let min_version = self.min_version.load(Ordering::Acquire);
-        for ent in self.inner.iter() {
-          if ent.key().version <= version {
-            ent.remove();
-          }
+    match self
+      .last_discard_version
+      .fetch_update(Ordering::SeqCst, Ordering::Acquire, |val| {
+        if val >= version {
+          None
+        } else {
+          Some(version)
         }
+      }) {
+      Ok(_) => {}
+      // if we fail to insert the new discard version,
+      // which means there is another thread that is compacting.
+      // To avoid run multiple compacting at the same time, we just return.
+      Err(version) => return version,
+    }
 
-        let _ = self.min_version.compare_exchange(
-          min_version,
-          version,
-          Ordering::AcqRel,
-          Ordering::Relaxed,
-        );
+    let min_version = self.min_version.load(Ordering::Acquire);
+    for ent in self.inner.iter() {
+      if ent.key().version <= version {
+        ent.remove();
       }
     }
+
+    let _ =
+      self
+        .min_version
+        .compare_exchange(min_version, version, Ordering::AcqRel, Ordering::Relaxed);
+    version
   }
 }
