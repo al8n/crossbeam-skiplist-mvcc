@@ -31,7 +31,7 @@ There are two kinds of multiple version concurrent control `SkipMap`:
         1. Fast latest iterators, fast read and write performance
     2. Cons:
         1. Once a key is inserted into the outer `SkipMap`, the compaction can only remove the values in the inner `SkipMap`,
-          this key cannot be removed any more. So, this may lead to high memory usage.
+            this key cannot be removed any more. So, this may lead to high memory usage.
 
 2. `flatten::SkipMap`
 
