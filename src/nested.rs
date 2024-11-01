@@ -265,9 +265,61 @@ impl<K, V> SkipMap<K, V> {
   }
 
   /// Returns `true` if the map may contain a value for the specified version.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
+  ///
+  /// let map: SkipMap<i32, i32> = SkipMap::new();
+  ///
+  /// assert!(!map.may_contain_version(0));
+  /// ```
   #[inline]
   pub fn may_contain_version(&self, version: u64) -> bool {
     version >= self.min_version.load(Ordering::Acquire)
+  }
+
+  /// Returns the minimum version in the map.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
+  ///
+  /// let map: SkipMap<i32, i32> = SkipMap::new();
+  ///
+  /// // For an empty map, the minimum version is u64::MAX.
+  /// assert_eq!(map.minimum_version(), u64::MAX);
+  ///
+  /// map.insert(0, 1, 1);
+  ///
+  /// assert_eq!(map.minimum_version(), 0);
+  /// ```
+  #[inline]
+  pub fn minimum_version(&self) -> u64 {
+    self.min_version.load(Ordering::Acquire)
+  }
+
+  /// Returns the maximum version in the map.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
+  ///
+  /// let map: SkipMap<i32, i32> = SkipMap::new();
+  ///
+  /// // For an empty map, the maximum version is 0.
+  /// assert_eq!(map.maximum_version(), 0);
+  ///
+  /// map.insert(1, 1, 1);
+  ///
+  /// assert_eq!(map.maximum_version(), 1);
+  /// ```
+  #[inline]
+  pub fn maximum_version(&self) -> u64 {
+    self.max_version.load(Ordering::Acquire)
   }
 
   fn update_versions(&self, version: u64) {
