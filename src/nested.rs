@@ -859,8 +859,8 @@ where
   }
 
   /// Returns an iterator over all entries (all versions) in the map.
-  pub fn iter_all_versions(&self, version: u64) -> AllVersionsIter<'_, K, V> {
-    AllVersionsIter::new(self.inner.iter(), version)
+  pub fn iter_all_versions(&self, version: u64) -> IterAll<'_, K, V> {
+    IterAll::new(self.inner.iter(), version)
   }
 
   /// Returns an iterator over a subset of entries in the map.
@@ -894,12 +894,12 @@ where
   }
 
   /// Returns an iterator over a subset of entries (with all versions) in the map.
-  pub fn range_all_versions<Q, R>(&self, version: u64, range: R) -> AllVersionsRange<'_, Q, R, K, V>
+  pub fn range_all_versions<Q, R>(&self, version: u64, range: R) -> RangeAll<'_, Q, R, K, V>
   where
     R: RangeBounds<Q>,
     Q: ?Sized + Comparable<K>,
   {
-    AllVersionsRange::new(self.inner.range(range), version)
+    RangeAll::new(self.inner.range(range), version)
   }
 }
 

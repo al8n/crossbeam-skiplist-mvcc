@@ -143,13 +143,13 @@ struct Latest<'a, K, V> {
 }
 
 /// An iterator over the entries with all versions of a `SkipMap`.
-pub struct AllVersionsIter<'a, K, V> {
+pub struct IterAll<'a, K, V> {
   iter: CIter<'a, K, Values<V>>,
   latest: Option<Latest<'a, K, V>>,
   query_version: u64,
 }
 
-impl<'a, K, V> AllVersionsIter<'a, K, V> {
+impl<'a, K, V> IterAll<'a, K, V> {
   pub(super) fn new(iter: CIter<'a, K, Values<V>>, query_version: u64) -> Self {
     Self {
       latest: None,
@@ -159,7 +159,7 @@ impl<'a, K, V> AllVersionsIter<'a, K, V> {
   }
 }
 
-impl<'a, K, V> Iterator for AllVersionsIter<'a, K, V>
+impl<'a, K, V> Iterator for IterAll<'a, K, V>
 where
   K: Ord,
 {
@@ -195,7 +195,7 @@ where
   }
 }
 
-impl<K, V> DoubleEndedIterator for AllVersionsIter<'_, K, V>
+impl<K, V> DoubleEndedIterator for IterAll<'_, K, V>
 where
   K: Ord,
 {
@@ -230,7 +230,7 @@ where
 }
 
 /// An iterator over the entries with all versions of a `SkipMap`.
-pub struct AllVersionsRange<'a, Q, R, K, V>
+pub struct RangeAll<'a, Q, R, K, V>
 where
   R: RangeBounds<Q>,
   Q: ?Sized + Comparable<K>,
@@ -240,7 +240,7 @@ where
   query_version: u64,
 }
 
-impl<'a, Q, R, K, V> AllVersionsRange<'a, Q, R, K, V>
+impl<'a, Q, R, K, V> RangeAll<'a, Q, R, K, V>
 where
   R: RangeBounds<Q>,
   Q: ?Sized + Comparable<K>,
@@ -254,7 +254,7 @@ where
   }
 }
 
-impl<'a, Q, R, K, V> Iterator for AllVersionsRange<'a, Q, R, K, V>
+impl<'a, Q, R, K, V> Iterator for RangeAll<'a, Q, R, K, V>
 where
   R: RangeBounds<Q>,
   Q: ?Sized + Comparable<K>,
@@ -292,7 +292,7 @@ where
   }
 }
 
-impl<Q, R, K, V> DoubleEndedIterator for AllVersionsRange<'_, Q, R, K, V>
+impl<Q, R, K, V> DoubleEndedIterator for RangeAll<'_, Q, R, K, V>
 where
   R: RangeBounds<Q>,
   Q: ?Sized + Comparable<K>,
