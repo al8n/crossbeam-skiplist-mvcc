@@ -116,6 +116,13 @@ impl<K: Debug, V: Debug> Debug for Entry<'_, K, V> {
   }
 }
 
+impl<'a, K, V> From<Entry<'a, K, V>> for VersionedEntry<'a, K, V> {
+  #[inline]
+  fn from(src: Entry<'a, K, V>) -> Self {
+    src.0
+  }
+}
+
 impl<K, V> Clone for Entry<'_, K, V> {
   #[inline]
   fn clone(&self) -> Self {

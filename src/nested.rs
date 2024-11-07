@@ -21,6 +21,17 @@ pub struct Entry<'a, K, V> {
   query_version: u64,
 }
 
+impl<'a, K, V> From<Entry<'a, K, V>> for VersionedEntry<'a, K, V> {
+  #[inline]
+  fn from(src: Entry<'a, K, V>) -> Self {
+    Self {
+      ent: src.ent,
+      value: src.value,
+      query_version: src.query_version,
+    }
+  }
+}
+
 impl<K, V> Clone for Entry<'_, K, V> {
   fn clone(&self) -> Self {
     Self {
