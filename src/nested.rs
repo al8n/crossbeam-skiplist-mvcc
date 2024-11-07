@@ -322,6 +322,23 @@ impl<K, V> SkipMap<K, V> {
     self.max_version.load(Ordering::Acquire)
   }
 
+  /// Returns `true` if the map contains no elements.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  ///
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
+  ///
+  /// let map: SkipMap<i32, i32> = SkipMap::new();
+  ///
+  /// assert!(map.is_empty());
+  /// ```
+  #[inline]
+  pub fn is_empty(&self) -> bool {
+    self.inner.is_empty()
+  }
+
   fn update_versions(&self, version: u64) {
     let _ = self
       .min_version
@@ -340,6 +357,29 @@ impl<K, V> SkipMap<K, V>
 where
   K: Ord,
 {
+  /// Returns the total number of entries in the map.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use crossbeam_skiplist_mvcc::nested::SkipMap;
+  ///
+  /// let map: SkipMap<i32, i32> = SkipMap::new();
+  ///
+  /// assert_eq!(map.len(), 0);
+  ///
+  /// map.insert(0, 1, 1);
+  ///
+  /// assert_eq!(map.len(), 1);
+  ///
+  /// map.insert(1, 1, 2);
+  /// assert_eq!(map.len(), 2);
+  /// ```
+  #[inline]
+  pub fn len(&self) -> usize {
+    self.inner.iter().map(|ent| ent.value().len()).sum()
+  }
+
   /// Returns `true` if the map contains a value for the specified key.
   ///
   /// ## Example
