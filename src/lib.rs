@@ -28,7 +28,7 @@ macro_rules! common {
     ///
     /// assert_eq!(*map.get(1, "key").unwrap().value(), "value");
     /// ```
-    pub fn insert(&self, version: u64, key: K, value: V) -> Result<Entry<'_, K, V>, Error> {
+    pub fn insert(&self, version: u64, key: K, value: V) -> Result<Entry<'_, K, V, Active>, Error> {
       self
         .check_discard(version)
         .map(|_| self.insert_in(version, key, value))
@@ -57,7 +57,7 @@ macro_rules! common {
     ///
     /// assert_eq!(*map.get(1, "key").unwrap().value(), "value");
     /// ```
-    pub fn insert_unchecked(&self, version: u64, key: K, value: V) -> Entry<'_, K, V> {
+    pub fn insert_unchecked(&self, version: u64, key: K, value: V) -> Entry<'_, K, V, Active> {
       self
         .check_discard(version)
         .expect("version has already been discarded");
@@ -97,7 +97,7 @@ macro_rules! common {
       key: K,
       value: V,
       compare_fn: F,
-    ) -> Result<Entry<'_, K, V>, Error>
+    ) -> Result<Entry<'_, K, V, Active>, Error>
     where
       F: Fn(Option<&V>) -> bool,
     {
@@ -135,7 +135,7 @@ macro_rules! common {
       key: K,
       value: V,
       compare_fn: F,
-    ) -> Entry<'_, K, V>
+    ) -> Entry<'_, K, V, Active>
     where
       F: Fn(Option<&V>) -> bool,
     {
@@ -169,7 +169,7 @@ macro_rules! common {
     /// map.insert(0, "key", "value");
     /// assert_eq!(*map.remove(1, "key").unwrap().unwrap().value(), "value");
     /// ```
-    pub fn remove(&self, version: u64, key: K) -> Result<Option<Entry<'_, K, V>>, Error> {
+    pub fn remove(&self, version: u64, key: K) -> Result<Option<Entry<'_, K, V, Active>>, Error> {
       self
         .check_discard(version)
         .map(|_| self.remove_in(version, key))
@@ -198,7 +198,7 @@ macro_rules! common {
     /// map.insert(0, "key", "value");
     /// assert_eq!(*map.remove_unchecked(1, "key").unwrap().value(), "value");
     /// ```
-    pub fn remove_unchecked(&self, version: u64, key: K) -> Option<Entry<'_, K, V>> {
+    pub fn remove_unchecked(&self, version: u64, key: K) -> Option<Entry<'_, K, V, Active>> {
       self
         .check_discard(version)
         .expect("version has already been discarded");
@@ -225,37 +225,44 @@ pub mod flatten;
 /// Error types for this crate.
 pub mod error;
 
-use core::{
-  cmp::Ordering,
-  ops::{Bound, RangeBounds},
-};
+pub use crossbeam_skiplist::equivalent::{Comparable, Equivalent};
 
-pub use crossbeam_skiplist::{Comparable, Equivalent};
+/// Convert the data of the state to the output type.
+pub trait Output<'a, V: 'a>: sealed::Sealed<'a, V> {}
 
-/// `ComparableRangeBounds` is implemented as an extention to `RangeBounds` to
-/// allow for comparison of items with range bounds.
-pub trait ComparableRangeBounds<Q: ?Sized>: RangeBounds<Q> {
-  /// Returns `true` if `item` is contained in the range.
-  fn compare_contains<K>(&self, item: &K) -> bool
-  where
-    Q: Comparable<K>,
-    K: ?Sized,
-  {
-    (match self.start_bound() {
-      Bound::Included(start) => start.compare(item) != Ordering::Greater,
-      Bound::Excluded(start) => start.compare(item) == Ordering::Less,
-      Bound::Unbounded => true,
-    }) && (match self.end_bound() {
-      Bound::Included(end) => end.compare(item) != Ordering::Less,
-      Bound::Excluded(end) => end.compare(item) == Ordering::Greater,
-      Bound::Unbounded => true,
-    })
+impl<'a, V: 'a, T> Output<'a, V> for T where T: sealed::Sealed<'a, V> {}
+
+mod sealed {
+  pub struct TombstoneValidator;
+
+  impl<V> snapshotor::Validator<Option<V>> for TombstoneValidator {
+    #[inline]
+    fn validate(&self, value: &Option<V>) -> bool {
+      value.is_some()
+    }
   }
-}
 
-impl<R, T> ComparableRangeBounds<T> for R
-where
-  R: ?Sized + RangeBounds<T>,
-  T: ?Sized,
-{
+  pub trait Sealed<'a, V: 'a>: dbutils::state::State {
+    type Output: 'a;
+
+    fn output(data: Option<&'a V>) -> Self::Output;
+  }
+
+  impl<'a, V: 'a> Sealed<'a, V> for dbutils::state::Active {
+    type Output = &'a V;
+
+    #[inline]
+    fn output(data: Option<&'a V>) -> Self::Output {
+      data.expect("entry in Active state must have a value")
+    }
+  }
+
+  impl<'a, V: 'a> Sealed<'a, V> for dbutils::state::MaybeTombstone {
+    type Output = Option<&'a V>;
+
+    #[inline]
+    fn output(data: Option<&'a V>) -> Self::Output {
+      data
+    }
+  }
 }

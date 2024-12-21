@@ -10,7 +10,7 @@ fn basic() {
   map.insert(0, "key2", 2).unwrap();
 
   {
-    let it = map.iter_all_versions(0);
+    let it = map.iter_all(0);
     for (idx, ent) in it.enumerate() {
       assert_eq!(ent.version(), 0);
       assert_eq!(ent.key(), &format!("key{}", idx + 1));
@@ -22,7 +22,7 @@ fn basic() {
   map.insert_unchecked(2, "a", 2);
 
   {
-    let mut it = map.iter_all_versions(2);
+    let mut it = map.iter_all(2);
     let ent = it.next().unwrap();
     assert_eq!(ent.version(), 2);
     assert_eq!(ent.key(), &"a");
@@ -38,7 +38,7 @@ fn basic() {
   map.insert_unchecked(1, "b", 1);
 
   {
-    let mut it = map.range_all_versions(2, "b"..);
+    let mut it = map.range_all(2, "b"..);
 
     let ent = it.next().unwrap();
     assert_eq!(ent.version(), 2);
@@ -53,14 +53,14 @@ fn basic() {
 }
 
 #[test]
-fn iter_all_versions_mvcc() {
+fn iter_all_mvcc() {
   let map = SkipMap::new();
   map.insert_unchecked(1, "a", "a1");
   map.insert_unchecked(3, "a", "a2");
   map.insert_unchecked(1, "c", "c1");
   map.insert_unchecked(3, "c", "c2");
 
-  let mut it = map.iter_all_versions(0);
+  let mut it = map.iter_all(0);
   let mut num = 0;
   while it.next().is_some() {
     num += 1;
@@ -68,7 +68,7 @@ fn iter_all_versions_mvcc() {
 
   assert_eq!(num, 0);
 
-  let mut it = map.iter_all_versions(1);
+  let mut it = map.iter_all(1);
   let a1 = it.next().unwrap();
   assert_eq!(a1.version(), 1);
   assert_eq!(a1.key(), &"a");
@@ -79,7 +79,7 @@ fn iter_all_versions_mvcc() {
   assert_eq!(c1.key(), &"c");
   assert_eq!(c1.value().unwrap(), &"c1");
 
-  let mut it = map.iter_all_versions(2);
+  let mut it = map.iter_all(2);
   let a1 = it.next().unwrap();
   assert_eq!(a1.version(), 1);
   assert_eq!(a1.key(), &"a");
@@ -90,7 +90,7 @@ fn iter_all_versions_mvcc() {
   assert_eq!(c1.key(), &"c");
   assert_eq!(c1.value().unwrap(), &"c1");
 
-  let mut it = map.iter_all_versions(3);
+  let mut it = map.iter_all(3);
   let a2 = it.next().unwrap();
   assert_eq!(a2.version(), 3);
   assert_eq!(a2.key(), &"a");
@@ -504,7 +504,7 @@ fn all_versions_iter_forwards() {
     map.remove(1, i).unwrap();
   }
 
-  let it = map.iter_all_versions(0);
+  let it = map.iter_all(0);
   let mut i = 0;
   for entry in it {
     assert_eq!(entry.version(), 0);
@@ -515,7 +515,7 @@ fn all_versions_iter_forwards() {
 
   assert_eq!(i, N);
 
-  let it = map.iter_all_versions(1);
+  let it = map.iter_all(1);
 
   let mut i = 0;
   for entry in it {
@@ -548,7 +548,7 @@ fn all_versions_iter_backwards() {
     map.remove_unchecked(1, i);
   }
 
-  let it = map.iter_all_versions(0).rev();
+  let it = map.iter_all(0).rev();
   let mut i = 0;
   for entry in it {
     i += 1;
@@ -557,7 +557,7 @@ fn all_versions_iter_backwards() {
   }
   assert_eq!(i, N);
 
-  let it = map.iter_all_versions(1).rev();
+  let it = map.iter_all(1).rev();
   let mut i = 0;
   for ref entry in it {
     if i % 2 == 0 {
@@ -597,7 +597,7 @@ fn cursor_forwards() {
   }
   assert_eq!(i, N);
 
-  let mut ent = map.front_versioned(1);
+  let mut ent = map.front_with_tombstone(1);
   let mut i = 0;
 
   while let Some(ref entry) = ent {
@@ -639,7 +639,7 @@ fn cursor_backwards() {
   }
   assert_eq!(i, N);
 
-  let mut ent = map.back_versioned(1);
+  let mut ent = map.back_with_tombstone(1);
   let mut i = 0;
   while let Some(ref entry) = ent {
     if i % 2 == 0 {
@@ -679,7 +679,7 @@ fn range_forwards() {
 
   assert_eq!(i, 51);
 
-  let it = map.range_all_versions(1, ..=50);
+  let it = map.range_all(1, ..=50);
   let mut i = 0;
 
   for entry in it {
@@ -721,7 +721,7 @@ fn range_backwards() {
   }
   assert_eq!(i, 51);
 
-  let it = map.range_all_versions(1, ..=50).rev();
+  let it = map.range_all(1, ..=50).rev();
   let mut i = 0;
   for ref entry in it {
     if i % 2 == 0 {
@@ -823,7 +823,7 @@ fn compact() {
   let version = map.compact(2);
   assert_eq!(version, 2);
 
-  for ent in map.iter_all_versions(3) {
+  for ent in map.iter_all(3) {
     assert_eq!(ent.version(), 3);
   }
 }

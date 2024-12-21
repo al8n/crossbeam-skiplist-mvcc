@@ -1,4 +1,4 @@
-use crossbeam_skiplist::Comparable;
+use crossbeam_skiplist::equivalent::Comparable;
 
 use super::{Key, Query, SkipMap};
 
@@ -6,7 +6,7 @@ use super::{Key, Query, SkipMap};
 fn ord() {
   let query = Query::new(1, &3usize);
   let k = Key::new(3usize, 3);
-  assert!(query.compare(&k).is_gt()); // larger version should be present before smaller version when key is the same.
+  assert!(k.compare(&query).is_lt()); // larger version should be present before smaller version when key is the same.
 }
 
 #[test]
@@ -17,7 +17,7 @@ fn clone() {
   println!("{:?}", ent);
   let _ = ent.clone();
 
-  let ent = map.get_versioned(1, &1);
+  let ent = map.get_with_tombstone(1, &1);
   println!("{:?}", ent);
   let _ = ent.clone();
 }

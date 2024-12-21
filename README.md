@@ -47,7 +47,7 @@ There are two kinds of multiple version concurrent control `SkipMap`:
 
 ```toml
 [dependencies]
-crossbeam_skiplist_mvcc = "0.1"
+crossbeam_skiplist_mvcc = "0.3"
 ```
 
 #### License
