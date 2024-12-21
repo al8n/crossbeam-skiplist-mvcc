@@ -22,8 +22,8 @@ std = []
 
 [dependencies]
 crossbeam-skiplist = { package = "crossbeam-skiplist-pr1132", version = "0.2" }
-dbutils = { path = "../layer0/dbutils", version = "0.12", default-features = false }
-snapshotor = { path = "../layer0/snapshotor", version = "0", default-features = false }
+dbutils = { version = "0.12", default-features = false }
+snapshotor = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 criterion = "0.5"

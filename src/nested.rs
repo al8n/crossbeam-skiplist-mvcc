@@ -709,7 +709,7 @@ where
   }
 
   /// Returns an iterator over all entries (all versions) in the map.
-  pub fn iter_all_versions(&self, version: u64) -> Iter<'_, K, V, MaybeTombstone> {
+  pub fn iter_all(&self, version: u64) -> Iter<'_, K, V, MaybeTombstone> {
     Iter::new(self.inner.iter(), version)
   }
 
@@ -745,11 +745,7 @@ where
   }
 
   /// Returns an iterator over a subset of entries (with all versions) in the map.
-  pub fn range_all_versions<Q, R>(
-    &self,
-    version: u64,
-    range: R,
-  ) -> Range<'_, K, V, MaybeTombstone, Q, R>
+  pub fn range_all<Q, R>(&self, version: u64, range: R) -> Range<'_, K, V, MaybeTombstone, Q, R>
   where
     K: Ord + Comparable<Q>,
     R: RangeBounds<Q>,
