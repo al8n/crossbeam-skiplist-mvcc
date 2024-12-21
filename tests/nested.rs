@@ -597,7 +597,7 @@ fn cursor_forwards() {
   }
   assert_eq!(i, N);
 
-  let mut ent = map.front_versioned(1);
+  let mut ent = map.front_with_tombstone(1);
   let mut i = 0;
 
   while let Some(ref entry) = ent {
@@ -639,7 +639,7 @@ fn cursor_backwards() {
   }
   assert_eq!(i, N);
 
-  let mut ent = map.back_versioned(1);
+  let mut ent = map.back_with_tombstone(1);
   let mut i = 0;
   while let Some(ref entry) = ent {
     if i % 2 == 0 {

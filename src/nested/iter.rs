@@ -1,65 +1,126 @@
 use core::ops::{Bound, RangeBounds, RangeToInclusive};
+use std::marker::PhantomData;
 
-use crossbeam_skiplist::{
-  map::{Iter as CIter, Range as CRange},
-  Comparable,
-};
+use crossbeam_skiplist::map::{Iter as CIter, Range as CRange};
+use dbutils::{equivalent::Comparable, state::State};
 
-use super::{CEntry, Entry, Values, VersionedEntry};
+use super::{CEntry, Entry, Values};
 
-/// An iterator over the entries of a `SkipMap`.
-pub struct Iter<'a, K, V> {
-  iter: CIter<'a, K, Values<V>>,
-  query_version: u64,
+struct Latest<'a, K, V> {
+  values_iter: CRange<'a, u64, RangeToInclusive<u64>, u64, Option<V>>,
+  ent: CEntry<'a, K, Values<V>>,
 }
 
-impl<'a, K, V> Iter<'a, K, V> {
+/// An iterator over the entries of a `SkipMap`.
+pub struct Iter<'a, K, V, S> {
+  iter: CIter<'a, K, Values<V>>,
+  query_version: u64,
+  latest: Option<Latest<'a, K, V>>,
+  _s: PhantomData<S>,
+}
+
+impl<'a, K, V, S> Iter<'a, K, V, S>
+where
+  S: State,
+{
   pub(super) fn new(iter: CIter<'a, K, Values<V>>, query_version: u64) -> Self {
     Self {
       iter,
       query_version,
+      latest: None,
+      _s: PhantomData,
     }
   }
 }
 
-impl<'a, K, V> Iterator for Iter<'a, K, V>
+impl<'a, K, V, S> Iterator for Iter<'a, K, V, S>
 where
   K: Ord,
+  S: State,
 {
-  type Item = Entry<'a, K, V>;
+  type Item = Entry<'a, K, V, S>;
 
   #[inline]
   fn next(&mut self) -> Option<Self::Item> {
-    loop {
-      let entry = self.iter.next()?;
+    if S::ALWAYS_VALID {
+      loop {
+        let entry = self.iter.next()?;
 
-      let value = entry
-        .value()
-        .upper_bound(Bound::Included(&self.query_version));
-      if let Some(value) = value {
-        if value.value().is_some() {
-          return Some(Entry::new(entry, value, self.query_version));
+        let value = entry
+          .value()
+          .upper_bound(Bound::Included(&self.query_version));
+        if let Some(value) = value {
+          if value.value().is_some() {
+            return Some(Entry::new(entry, value, self.query_version));
+          }
+        }
+      }
+    } else {
+      loop {
+        match self.latest {
+          Some(ref mut latest) => match latest.values_iter.next_back() {
+            None => {
+              let ent = self.iter.next()?;
+              let values_iter = ent.value().range(..=self.query_version);
+              latest.values_iter = values_iter;
+              latest.ent = ent;
+            }
+            Some(value) => {
+              return Some(Entry::new(latest.ent.clone(), value, self.query_version));
+            }
+          },
+          None => {
+            let ent = self.iter.next()?;
+            let values_iter = ent.value().range(..=self.query_version);
+            let latest = Latest { values_iter, ent };
+            self.latest = Some(latest);
+          }
         }
       }
     }
   }
 }
 
-impl<K, V> DoubleEndedIterator for Iter<'_, K, V>
+impl<K, V, S> DoubleEndedIterator for Iter<'_, K, V, S>
 where
   K: Ord,
+  S: State,
 {
   #[inline]
   fn next_back(&mut self) -> Option<Self::Item> {
-    loop {
-      let entry = self.iter.next_back()?;
+    if S::ALWAYS_VALID {
+      loop {
+        let entry = self.iter.next_back()?;
 
-      let value = entry
-        .value()
-        .upper_bound(Bound::Included(&self.query_version));
-      if let Some(value) = value {
-        if value.value().is_some() {
-          return Some(Entry::new(entry, value, self.query_version));
+        let value = entry
+          .value()
+          .upper_bound(Bound::Included(&self.query_version));
+        if let Some(value) = value {
+          if value.value().is_some() {
+            return Some(Entry::new(entry, value, self.query_version));
+          }
+        }
+      }
+    } else {
+      loop {
+        match self.latest {
+          Some(ref mut latest) => match latest.values_iter.next() {
+            None => {
+              let ent = self.iter.next_back()?;
+              let values_iter = ent.value().range(..=self.query_version);
+              latest.values_iter = values_iter;
+              latest.ent = ent;
+            }
+            Some(value) => {
+              return Some(Entry::new(latest.ent.clone(), value, self.query_version));
+            }
+          },
+          None => {
+            let ent = self.iter.next_back()?;
+            let values_iter = ent.value().range(..=self.query_version);
+            let latest = Latest { values_iter, ent };
+            self.latest = Some(latest);
+          }
         }
       }
     }
@@ -67,261 +128,126 @@ where
 }
 
 /// An iterator over a subset of entries of a `SkipMap`.
-pub struct Range<'a, Q, R, K, V>
+pub struct Range<'a, K, V, S, Q, R>
 where
+  K: Ord + Comparable<Q>,
   R: RangeBounds<Q>,
-  Q: ?Sized + Comparable<K>,
+  Q: ?Sized,
 {
   range: CRange<'a, Q, R, K, Values<V>>,
+  latest: Option<Latest<'a, K, V>>,
   query_version: u64,
+  _s: PhantomData<S>,
 }
 
-impl<'a, Q, R, K, V> Range<'a, Q, R, K, V>
+impl<'a, K, V, S, Q, R> Range<'a, K, V, S, Q, R>
 where
+  K: Ord + Comparable<Q>,
   R: RangeBounds<Q>,
-  Q: ?Sized + Comparable<K>,
+  Q: ?Sized,
 {
   pub(super) fn new(range: CRange<'a, Q, R, K, Values<V>>, query_version: u64) -> Self {
     Self {
       range,
       query_version,
-    }
-  }
-}
-
-impl<'a, Q, R, K, V> Iterator for Range<'a, Q, R, K, V>
-where
-  R: RangeBounds<Q>,
-  Q: ?Sized + Comparable<K>,
-  K: Ord,
-{
-  type Item = Entry<'a, K, V>;
-
-  #[inline]
-  fn next(&mut self) -> Option<Self::Item> {
-    loop {
-      let entry = self.range.next()?;
-
-      let value = entry
-        .value()
-        .upper_bound(Bound::Included(&self.query_version));
-      if let Some(value) = value {
-        if value.value().is_some() {
-          return Some(Entry::new(entry, value, self.query_version));
-        }
-      }
-    }
-  }
-}
-
-impl<Q, R, K, V> DoubleEndedIterator for Range<'_, Q, R, K, V>
-where
-  R: RangeBounds<Q>,
-  Q: ?Sized + Comparable<K>,
-  K: Ord,
-{
-  #[inline]
-  fn next_back(&mut self) -> Option<Self::Item> {
-    loop {
-      let entry = self.range.next_back()?;
-
-      let value = entry
-        .value()
-        .upper_bound(Bound::Included(&self.query_version));
-      if let Some(value) = value {
-        if value.value().is_some() {
-          return Some(Entry::new(entry, value, self.query_version));
-        }
-      }
-    }
-  }
-}
-
-struct Latest<'a, K, V> {
-  values_iter: CRange<'a, u64, RangeToInclusive<u64>, u64, Option<V>>,
-  ent: CEntry<'a, K, Values<V>>,
-}
-
-/// An iterator over the entries with all versions of a `SkipMap`.
-pub struct IterAll<'a, K, V> {
-  iter: CIter<'a, K, Values<V>>,
-  latest: Option<Latest<'a, K, V>>,
-  query_version: u64,
-}
-
-impl<'a, K, V> IterAll<'a, K, V> {
-  pub(super) fn new(iter: CIter<'a, K, Values<V>>, query_version: u64) -> Self {
-    Self {
       latest: None,
-      iter,
-      query_version,
+      _s: PhantomData,
     }
   }
 }
 
-impl<'a, K, V> Iterator for IterAll<'a, K, V>
+impl<'a, K, V, S, Q, R> Iterator for Range<'a, K, V, S, Q, R>
 where
-  K: Ord,
+  K: Ord + Comparable<Q>,
+  R: RangeBounds<Q>,
+  Q: ?Sized,
+  S: State,
 {
-  type Item = VersionedEntry<'a, K, V>;
+  type Item = Entry<'a, K, V, S>;
 
   #[inline]
   fn next(&mut self) -> Option<Self::Item> {
-    loop {
-      match self.latest {
-        Some(ref mut latest) => match latest.values_iter.next_back() {
+    if S::ALWAYS_VALID {
+      loop {
+        let entry = self.range.next()?;
+
+        let value = entry
+          .value()
+          .upper_bound(Bound::Included(&self.query_version));
+        if let Some(value) = value {
+          if value.value().is_some() {
+            return Some(Entry::new(entry, value, self.query_version));
+          }
+        }
+      }
+    } else {
+      loop {
+        match self.latest {
+          Some(ref mut latest) => match latest.values_iter.next_back() {
+            None => {
+              let ent = self.range.next()?;
+              let values_iter = ent.value().range(..=self.query_version);
+              latest.values_iter = values_iter;
+              latest.ent = ent;
+            }
+            Some(value) => {
+              return Some(Entry::new(latest.ent.clone(), value, self.query_version));
+            }
+          },
           None => {
-            let ent = self.iter.next()?;
+            let ent = self.range.next()?;
             let values_iter = ent.value().range(..=self.query_version);
-            latest.values_iter = values_iter;
-            latest.ent = ent;
+            let latest = Latest { values_iter, ent };
+            self.latest = Some(latest);
           }
-          Some(value) => {
-            return Some(VersionedEntry::new(
-              latest.ent.clone(),
-              value,
-              self.query_version,
-            ));
-          }
-        },
-        None => {
-          let ent = self.iter.next()?;
-          let values_iter = ent.value().range(..=self.query_version);
-          let latest = Latest { values_iter, ent };
-          self.latest = Some(latest);
         }
       }
     }
   }
 }
 
-impl<K, V> DoubleEndedIterator for IterAll<'_, K, V>
+impl<K, V, S, Q, R> DoubleEndedIterator for Range<'_, K, V, S, Q, R>
 where
-  K: Ord,
+  K: Ord + Comparable<Q>,
+  R: RangeBounds<Q>,
+  Q: ?Sized,
+  S: State,
 {
   #[inline]
   fn next_back(&mut self) -> Option<Self::Item> {
-    loop {
-      match self.latest {
-        Some(ref mut latest) => match latest.values_iter.next() {
-          None => {
-            let ent = self.iter.next_back()?;
-            let values_iter = ent.value().range(..=self.query_version);
-            latest.values_iter = values_iter;
-            latest.ent = ent;
+    if S::ALWAYS_VALID {
+      loop {
+        let entry = self.range.next_back()?;
+
+        let value = entry
+          .value()
+          .upper_bound(Bound::Included(&self.query_version));
+        if let Some(value) = value {
+          if value.value().is_some() {
+            return Some(Entry::new(entry, value, self.query_version));
           }
-          Some(value) => {
-            return Some(VersionedEntry::new(
-              latest.ent.clone(),
-              value,
-              self.query_version,
-            ));
-          }
-        },
-        None => {
-          let ent = self.iter.next_back()?;
-          let values_iter = ent.value().range(..=self.query_version);
-          let latest = Latest { values_iter, ent };
-          self.latest = Some(latest);
         }
       }
-    }
-  }
-}
-
-/// An iterator over the entries with all versions of a `SkipMap`.
-pub struct RangeAll<'a, Q, R, K, V>
-where
-  R: RangeBounds<Q>,
-  Q: ?Sized + Comparable<K>,
-{
-  iter: CRange<'a, Q, R, K, Values<V>>,
-  latest: Option<Latest<'a, K, V>>,
-  query_version: u64,
-}
-
-impl<'a, Q, R, K, V> RangeAll<'a, Q, R, K, V>
-where
-  R: RangeBounds<Q>,
-  Q: ?Sized + Comparable<K>,
-{
-  pub(super) fn new(iter: CRange<'a, Q, R, K, Values<V>>, query_version: u64) -> Self {
-    Self {
-      latest: None,
-      iter,
-      query_version,
-    }
-  }
-}
-
-impl<'a, Q, R, K, V> Iterator for RangeAll<'a, Q, R, K, V>
-where
-  R: RangeBounds<Q>,
-  Q: ?Sized + Comparable<K>,
-  K: Ord,
-{
-  type Item = VersionedEntry<'a, K, V>;
-
-  #[inline]
-  fn next(&mut self) -> Option<Self::Item> {
-    loop {
-      match self.latest {
-        Some(ref mut latest) => match latest.values_iter.next_back() {
+    } else {
+      loop {
+        match self.latest {
+          Some(ref mut latest) => match latest.values_iter.next() {
+            None => {
+              let ent = self.range.next_back()?;
+              let values_iter = ent.value().range(..=self.query_version);
+              latest.values_iter = values_iter;
+              latest.ent = ent;
+            }
+            Some(value) => {
+              return Some(Entry::new(latest.ent.clone(), value, self.query_version));
+            }
+          },
           None => {
-            let ent = self.iter.next()?;
+            let ent = self.range.next_back()?;
             let values_iter = ent.value().range(..=self.query_version);
-            latest.values_iter = values_iter;
-            latest.ent = ent;
+            let latest = Latest { values_iter, ent };
+            self.latest = Some(latest);
           }
-          Some(value) => {
-            return Some(VersionedEntry::new(
-              latest.ent.clone(),
-              value,
-              self.query_version,
-            ));
-          }
-        },
-        None => {
-          let ent = self.iter.next()?;
-          let values_iter = ent.value().range(..=self.query_version);
-          let latest = Latest { values_iter, ent };
-          self.latest = Some(latest);
-        }
-      }
-    }
-  }
-}
-
-impl<Q, R, K, V> DoubleEndedIterator for RangeAll<'_, Q, R, K, V>
-where
-  R: RangeBounds<Q>,
-  Q: ?Sized + Comparable<K>,
-  K: Ord,
-{
-  #[inline]
-  fn next_back(&mut self) -> Option<Self::Item> {
-    loop {
-      match self.latest {
-        Some(ref mut latest) => match latest.values_iter.next() {
-          None => {
-            let ent = self.iter.next_back()?;
-            let values_iter = ent.value().range(..=self.query_version);
-            latest.values_iter = values_iter;
-            latest.ent = ent;
-          }
-          Some(value) => {
-            return Some(VersionedEntry::new(
-              latest.ent.clone(),
-              value,
-              self.query_version,
-            ));
-          }
-        },
-        None => {
-          let ent = self.iter.next_back()?;
-          let values_iter = ent.value().range(..=self.query_version);
-          let latest = Latest { values_iter, ent };
-          self.latest = Some(latest);
         }
       }
     }

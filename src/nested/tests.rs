@@ -8,7 +8,7 @@ fn clone() {
   println!("{:?}", ent);
   let _ = ent.clone();
 
-  let ent = map.get_versioned(1, &1);
+  let ent = map.get_with_tombstone(1, &1);
   println!("{:?}", ent);
   let _ = ent.clone();
 }
