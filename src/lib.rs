@@ -28,7 +28,12 @@ macro_rules! common {
     ///
     /// assert_eq!(*map.get(1, "key").unwrap().value(), "value");
     /// ```
-    pub fn insert(&self, version: u64, key: K, value: V) -> Result<Entry<'_, K, V, Active>, Error> {
+    pub fn insert(
+      &self,
+      version: u64,
+      key: K,
+      value: V,
+    ) -> Result<Entry<'_, K, V, Active, C>, Error> {
       self
         .check_discard(version)
         .map(|_| self.insert_in(version, key, value))
@@ -57,7 +62,7 @@ macro_rules! common {
     ///
     /// assert_eq!(*map.get(1, "key").unwrap().value(), "value");
     /// ```
-    pub fn insert_unchecked(&self, version: u64, key: K, value: V) -> Entry<'_, K, V, Active> {
+    pub fn insert_unchecked(&self, version: u64, key: K, value: V) -> Entry<'_, K, V, Active, C> {
       self
         .check_discard(version)
         .expect("version has already been discarded");
@@ -97,7 +102,7 @@ macro_rules! common {
       key: K,
       value: V,
       compare_fn: F,
-    ) -> Result<Entry<'_, K, V, Active>, Error>
+    ) -> Result<Entry<'_, K, V, Active, C>, Error>
     where
       F: Fn(Option<&V>) -> bool,
     {
@@ -135,7 +140,7 @@ macro_rules! common {
       key: K,
       value: V,
       compare_fn: F,
-    ) -> Entry<'_, K, V, Active>
+    ) -> Entry<'_, K, V, Active, C>
     where
       F: Fn(Option<&V>) -> bool,
     {
@@ -169,7 +174,11 @@ macro_rules! common {
     /// map.insert(0, "key", "value");
     /// assert_eq!(*map.remove(1, "key").unwrap().unwrap().value(), "value");
     /// ```
-    pub fn remove(&self, version: u64, key: K) -> Result<Option<Entry<'_, K, V, Active>>, Error> {
+    pub fn remove(
+      &self,
+      version: u64,
+      key: K,
+    ) -> Result<Option<Entry<'_, K, V, Active, C>>, Error> {
       self
         .check_discard(version)
         .map(|_| self.remove_in(version, key))
@@ -198,7 +207,7 @@ macro_rules! common {
     /// map.insert(0, "key", "value");
     /// assert_eq!(*map.remove_unchecked(1, "key").unwrap().value(), "value");
     /// ```
-    pub fn remove_unchecked(&self, version: u64, key: K) -> Option<Entry<'_, K, V, Active>> {
+    pub fn remove_unchecked(&self, version: u64, key: K) -> Option<Entry<'_, K, V, Active, C>> {
       self
         .check_discard(version)
         .expect("version has already been discarded");
@@ -225,7 +234,7 @@ pub mod flatten;
 /// Error types for this crate.
 pub mod error;
 
-pub use crossbeam_skiplist::equivalent::{Comparable, Equivalent};
+pub use crossbeam_skiplist::{equivalentor, Ascend, Descend};
 
 /// Convert the data of the state to the output type.
 pub trait Output<'a, V: 'a>: sealed::Sealed<'a, V> {}

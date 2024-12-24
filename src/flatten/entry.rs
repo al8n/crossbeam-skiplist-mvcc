@@ -1,30 +1,34 @@
 use core::fmt::Debug;
 
-use crossbeam_skiplist::map;
-use dbutils::{equivalentor::Ascend, state::State};
+use crossbeam_skiplist::{equivalentor::Comparator, map};
+use dbutils::state::State;
 use snapshotor::{CursorExt, DoubleEndedCursorExt, Entry as _, NoopValidator};
 
 use crate::{sealed::TombstoneValidator, Output};
 
-use super::Key;
+use super::{comparator::MultipleVersionsComparator, Key};
 
-pub struct MapEntry<'a, K, V>(pub(super) map::Entry<'a, Key<K>, Option<V>>);
+pub struct MapEntry<'a, K, V, C>(
+  pub(super) map::Entry<'a, Key<K>, Option<V>, MultipleVersionsComparator<C>>,
+);
 
-impl<'a, K, V> From<map::Entry<'a, Key<K>, Option<V>>> for MapEntry<'a, K, V> {
+impl<'a, K, V, C> From<map::Entry<'a, Key<K>, Option<V>, MultipleVersionsComparator<C>>>
+  for MapEntry<'a, K, V, C>
+{
   #[inline]
-  fn from(src: map::Entry<'a, Key<K>, Option<V>>) -> Self {
+  fn from(src: map::Entry<'a, Key<K>, Option<V>, MultipleVersionsComparator<C>>) -> Self {
     Self(src)
   }
 }
 
-impl<K, V> Clone for MapEntry<'_, K, V> {
+impl<K, V, C> Clone for MapEntry<'_, K, V, C> {
   #[inline]
   fn clone(&self) -> Self {
     Self(self.0.clone())
   }
 }
 
-impl<K, V> snapshotor::Entry for MapEntry<'_, K, V> {
+impl<K, V, C> snapshotor::Entry for MapEntry<'_, K, V, C> {
   type Key = K;
   type Value = Option<V>;
   type Version = u64;
@@ -45,9 +49,9 @@ impl<K, V> snapshotor::Entry for MapEntry<'_, K, V> {
   }
 }
 
-impl<K, V> snapshotor::Cursor for MapEntry<'_, K, V>
+impl<K, V, C> snapshotor::Cursor for MapEntry<'_, K, V, C>
 where
-  K: Ord,
+  C: Comparator<K>,
 {
   fn next(&self) -> Option<Self>
   where
@@ -57,9 +61,9 @@ where
   }
 }
 
-impl<K, V> snapshotor::DoubleEndedCursor for MapEntry<'_, K, V>
+impl<K, V, C> snapshotor::DoubleEndedCursor for MapEntry<'_, K, V, C>
 where
-  K: Ord,
+  C: Comparator<K>,
 {
   fn next_back(&self) -> Option<Self>
   where
@@ -70,13 +74,13 @@ where
 }
 
 /// A reference-counted entry in a map.
-pub struct Entry<'a, K, V, S> {
-  pub(super) ent: MapEntry<'a, K, V>,
+pub struct Entry<'a, K, V, S, C> {
+  pub(super) ent: MapEntry<'a, K, V, C>,
   query_version: u64,
   _m: core::marker::PhantomData<S>,
 }
 
-impl<'a, K: Debug, V: Debug, S> Debug for Entry<'a, K, V, S>
+impl<'a, K: Debug, V: Debug, C, S> Debug for Entry<'a, K, V, S, C>
 where
   S: Output<'a, V>,
   S::Output: Debug,
@@ -92,7 +96,7 @@ where
   }
 }
 
-impl<K, V, S> Clone for Entry<'_, K, V, S> {
+impl<K, V, S, C> Clone for Entry<'_, K, V, S, C> {
   #[inline]
   fn clone(&self) -> Self {
     Self {
@@ -103,7 +107,7 @@ impl<K, V, S> Clone for Entry<'_, K, V, S> {
   }
 }
 
-impl<'a, K, V, S> Entry<'a, K, V, S> {
+impl<'a, K, V, S, C> Entry<'a, K, V, S, C> {
   /// Returns the version of the entry.
   #[inline]
   pub fn version(&self) -> u64 {
@@ -126,7 +130,7 @@ impl<'a, K, V, S> Entry<'a, K, V, S> {
   }
 
   #[inline]
-  pub(super) fn new(entry: MapEntry<'a, K, V>, query_version: u64) -> Self {
+  pub(super) fn new(entry: MapEntry<'a, K, V, C>, query_version: u64) -> Self {
     Self {
       ent: entry,
       query_version,
@@ -135,10 +139,10 @@ impl<'a, K, V, S> Entry<'a, K, V, S> {
   }
 }
 
-impl<K, V, S> Entry<'_, K, V, S>
+impl<K, V, S, C> Entry<'_, K, V, S, C>
 where
-  K: Ord,
   S: State,
+  C: Comparator<K>,
 {
   /// Returns the next entry in the map.
   pub fn next(&self) -> Option<Self> {
@@ -160,7 +164,7 @@ where
     } else {
       self.ent.next_dedup(
         &self.query_version,
-        &Ascend,
+        &self.ent.0.comparator().0,
         &NoopValidator,
         &TombstoneValidator,
       )
@@ -188,7 +192,7 @@ where
     } else {
       self.ent.next_back_dedup(
         &self.query_version,
-        &Ascend,
+        &self.ent.0.comparator().0,
         &NoopValidator,
         &TombstoneValidator,
       )

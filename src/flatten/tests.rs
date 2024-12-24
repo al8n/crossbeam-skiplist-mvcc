@@ -1,13 +1,4 @@
-use crossbeam_skiplist::equivalent::Comparable;
-
-use super::{Key, Query, SkipMap};
-
-#[test]
-fn ord() {
-  let query = Query::new(1, &3usize);
-  let k = Key::new(3usize, 3);
-  assert!(k.compare(&query).is_lt()); // larger version should be present before smaller version when key is the same.
-}
+use super::SkipMap;
 
 #[test]
 fn clone() {

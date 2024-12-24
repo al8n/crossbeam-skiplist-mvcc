@@ -1,6 +1,6 @@
 [package]
 name = "crossbeam-skiplist-mvcc"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 repository = "https://github.com/al8n/crossbeam-skiplist-mvcc"
 homepage = "https://github.com/al8n/crossbeam-skiplist-mvcc"
@@ -18,12 +18,12 @@ harness = false
 
 [features]
 default = ["std"]
-std = []
+std = ["crossbeam-skiplist/std", "dbutils/std"]
 
 [dependencies]
-crossbeam-skiplist = { package = "crossbeam-skiplist-pr1132", version = "0.2" }
+crossbeam-skiplist = { package = "crossbeam-skiplist-fd", version = "0.1" }
 dbutils = { version = "0.12", default-features = false }
-snapshotor = { version = "0.1", default-features = false }
+snapshotor = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 criterion = "0.5"
