@@ -74,6 +74,21 @@ impl<K, V, C> SkipMap<K, V, C> {
     }
   }
 
+  /// Returns a reference to the comparator used in the map.
+  ///
+  /// ## Example
+  ///
+  /// ```rust
+  /// use crossbeam_skiplist_mvcc::{nested::SkipMap, Ascend};
+  ///
+  /// let map: SkipMap<i32, i32> = SkipMap::with_comparator(Ascend);
+  /// assert_eq!(map.comparator(), &Ascend);
+  /// ```
+  #[inline]
+  pub fn comparator(&self) -> &C {
+    self.inner.comparator()
+  }
+
   /// Returns `true` if the map may contain a value for the specified version.
   ///
   /// ## Example

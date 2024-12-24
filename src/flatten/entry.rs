@@ -129,6 +129,12 @@ impl<'a, K, V, S, C> Entry<'a, K, V, S, C> {
     S::output(self.ent.0.value().as_ref())
   }
 
+  /// Returns a reference to the comparator.
+  #[inline]
+  pub fn comparator(&self) -> &'a C {
+    &self.ent.0.comparator().0
+  }
+
   #[inline]
   pub(super) fn new(entry: MapEntry<'a, K, V, C>, query_version: u64) -> Self {
     Self {

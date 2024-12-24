@@ -64,6 +64,12 @@ impl<'a, K, V, S, C> Entry<'a, K, V, S, C> {
     S::output(self.value.value().as_ref())
   }
 
+  /// Returns a reference to the comparator.
+  #[inline]
+  pub fn comparator(&self) -> &'a C {
+    self.ent.comparator()
+  }
+
   #[inline]
   pub(super) const fn new(
     ent: CEntry<'a, K, Values<V>, C>,

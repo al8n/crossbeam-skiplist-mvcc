@@ -236,6 +236,8 @@ pub mod error;
 
 pub use crossbeam_skiplist::{equivalentor, Ascend, Descend};
 
+pub use dbutils::state;
+
 /// Convert the data of the state to the output type.
 pub trait Output<'a, V: 'a>: sealed::Sealed<'a, V> {}
 
