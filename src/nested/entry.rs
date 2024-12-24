@@ -1,6 +1,6 @@
 use core::{fmt::Debug, marker::PhantomData, ops::Bound};
 
-use crossbeam_skiplist::map::Entry as CEntry;
+use crossbeam_skiplist::{equivalentor::Comparator, map::Entry as CEntry, Ascend};
 use dbutils::state::State;
 
 use crate::Output;
@@ -8,14 +8,14 @@ use crate::Output;
 use super::Values;
 
 /// A reference-counted entry.
-pub struct Entry<'a, K, V, S> {
-  ent: CEntry<'a, K, Values<V>>,
-  value: CEntry<'a, u64, Option<V>>,
+pub struct Entry<'a, K, V, S, C> {
+  ent: CEntry<'a, K, Values<V>, C>,
+  value: CEntry<'a, u64, Option<V>, Ascend>,
   query_version: u64,
   _s: PhantomData<S>,
 }
 
-impl<K, V, S> Clone for Entry<'_, K, V, S> {
+impl<K, V, S, C> Clone for Entry<'_, K, V, S, C> {
   fn clone(&self) -> Self {
     Self {
       ent: self.ent.clone(),
@@ -26,7 +26,7 @@ impl<K, V, S> Clone for Entry<'_, K, V, S> {
   }
 }
 
-impl<'a, K, V, S> Debug for Entry<'a, K, V, S>
+impl<'a, K, V, S, C> Debug for Entry<'a, K, V, S, C>
 where
   K: Debug,
   V: Debug,
@@ -42,7 +42,7 @@ where
   }
 }
 
-impl<'a, K, V, S> Entry<'a, K, V, S> {
+impl<'a, K, V, S, C> Entry<'a, K, V, S, C> {
   /// Returns the version of the entry.
   #[inline]
   pub fn version(&self) -> u64 {
@@ -66,8 +66,8 @@ impl<'a, K, V, S> Entry<'a, K, V, S> {
 
   #[inline]
   pub(super) const fn new(
-    ent: CEntry<'a, K, Values<V>>,
-    value: CEntry<'a, u64, Option<V>>,
+    ent: CEntry<'a, K, Values<V>, C>,
+    value: CEntry<'a, u64, Option<V>, Ascend>,
     query_version: u64,
   ) -> Self {
     Self {
@@ -79,13 +79,13 @@ impl<'a, K, V, S> Entry<'a, K, V, S> {
   }
 }
 
-impl<'a, K, V, S> Entry<'a, K, V, S>
+impl<'a, K, V, S, C> Entry<'a, K, V, S, C>
 where
-  K: Ord,
+  C: Comparator<K>,
   S: State,
 {
   /// Returns the next entry in the map.
-  pub fn next(&self) -> Option<Entry<'a, K, V, S>> {
+  pub fn next(&self) -> Option<Entry<'a, K, V, S, C>> {
     if S::ALWAYS_VALID {
       let mut ent = self.ent.next();
       loop {
@@ -124,7 +124,7 @@ where
   }
 
   /// Returns the previous entry in the map.
-  pub fn prev(&self) -> Option<Entry<'a, K, V, S>> {
+  pub fn prev(&self) -> Option<Entry<'a, K, V, S, C>> {
     if S::ALWAYS_VALID {
       let mut ent = self.ent.prev();
       loop {

@@ -1,10 +1,7 @@
 use std::ops::{Bound, RangeBounds};
 
-use dbutils::{
-  equivalent::Comparable,
-  equivalentor::Ascend,
-  state::{Active, MaybeTombstone, State},
-};
+use crossbeam_skiplist::equivalentor::QueryComparator;
+use dbutils::state::{Active, MaybeTombstone, State};
 use snapshotor::{dedup, valid, Builder, NoopValidator, Seekable};
 
 use crate::sealed::TombstoneValidator;
@@ -20,11 +17,11 @@ mod sealed {
   use super::*;
 
   pub trait Sealed<K, V>: State {
-    type Range<'a, Q, R>
+    type Range<'a, Q, R, C>
     where
-      K: Ord + Comparable<Q>,
       Q: ?Sized,
-      R: RangeBounds<Q>;
+      R: RangeBounds<Q>,
+      C: QueryComparator<K, Q> + 'static;
   }
 
   impl<K, V> Sealed<K, V> for Active
@@ -32,20 +29,21 @@ mod sealed {
     K: 'static,
     V: 'static,
   {
-    type Range<'a, Q, R>
-      = dedup::Range<
+    type Range<'a, Q, R, C>
+      = dedup::RefRange<
+      'a,
       R,
       Q,
-      Seeker<'a, K, V>,
-      MapEntry<'a, K, V>,
-      Ascend,
+      Seeker<'a, K, V, C>,
+      MapEntry<'a, K, V, C>,
+      C,
       NoopValidator,
       TombstoneValidator,
     >
     where
-      K: Ord + Comparable<Q>,
       Q: ?Sized,
-      R: RangeBounds<Q>;
+      R: RangeBounds<Q>,
+      C: QueryComparator<K, Q> + 'static;
   }
 
   impl<K, V> Sealed<K, V> for MaybeTombstone
@@ -53,28 +51,36 @@ mod sealed {
     K: 'static,
     V: 'static,
   {
-    type Range<'a, Q, R>
-      =
-      valid::Range<R, Q, Seeker<'a, K, V>, MapEntry<'a, K, V>, Ascend, NoopValidator, NoopValidator>
+    type Range<'a, Q, R, C>
+      = valid::RefRange<
+      'a,
+      R,
+      Q,
+      Seeker<'a, K, V, C>,
+      MapEntry<'a, K, V, C>,
+      C,
+      NoopValidator,
+      NoopValidator,
+    >
     where
-      K: Ord + Comparable<Q>,
       Q: ?Sized,
-      R: RangeBounds<Q>;
+      R: RangeBounds<Q>,
+      C: QueryComparator<K, Q> + 'static;
   }
 }
 
-pub struct Seeker<'a, K, V> {
-  map: &'a super::SkipMap<K, V>,
+pub struct Seeker<'a, K, V, C> {
+  map: &'a super::SkipMap<K, V, C>,
   query_version: u64,
 }
 
-impl<'a, K, V, Q> Seekable<Q> for Seeker<'a, K, V>
+impl<'a, K, V, Q, C> Seekable<Q> for Seeker<'a, K, V, C>
 where
-  K: Ord + Comparable<Q> + 'static,
   V: 'static,
   Q: ?Sized,
+  C: QueryComparator<K, Q>,
 {
-  type Entry = MapEntry<'a, K, V>;
+  type Entry = MapEntry<'a, K, V, C>;
 
   fn lower_bound(&self, bound: Bound<&Q>) -> Option<Self::Entry> {
     self
@@ -94,27 +100,28 @@ where
 }
 
 /// a
-pub struct Range<'a, K, V, S, Q, R>
+pub struct Range<'a, K, V, S, Q, R, C>
 where
-  K: Ord + Comparable<Q> + 'static,
+  C: QueryComparator<K, Q> + 'static,
   V: 'static,
   R: RangeBounds<Q>,
   Q: ?Sized,
   S: RangeState<K, V>,
 {
-  iter: S::Range<'a, Q, R>,
+  iter: S::Range<'a, Q, R, C>,
   version: u64,
 }
 
-impl<'a, K, V, Q, R> Range<'a, K, V, Active, Q, R>
+impl<'a, K, V, Q, R, C> Range<'a, K, V, Active, Q, R, C>
 where
-  K: Ord + Comparable<Q> + 'static,
+  C: QueryComparator<K, Q> + 'static,
+  K: 'static,
   V: 'static,
   R: RangeBounds<Q>,
   Q: ?Sized,
 {
   #[inline]
-  pub(super) fn new(version: u64, map: &'a super::SkipMap<K, V>, range: R) -> Self {
+  pub(super) fn new(version: u64, map: &'a super::SkipMap<K, V, C>, range: R) -> Self {
     let seeker = Seeker {
       map,
       query_version: version,
@@ -123,43 +130,48 @@ where
     Self {
       iter: Builder::new(seeker)
         .with_value_validator(TombstoneValidator)
+        .with_comparator(&map.inner.comparator().0)
         .range(version, range),
       version,
     }
   }
 }
 
-impl<'a, K, V, Q, R> Range<'a, K, V, MaybeTombstone, Q, R>
+impl<'a, K, V, Q, R, C> Range<'a, K, V, MaybeTombstone, Q, R, C>
 where
-  K: Ord + Comparable<Q> + 'static,
+  C: QueryComparator<K, Q> + 'static,
+  K: 'static,
   V: 'static,
   R: RangeBounds<Q>,
   Q: ?Sized,
 {
   #[inline]
-  pub(super) fn with_tombstone(version: u64, map: &'a super::SkipMap<K, V>, range: R) -> Self {
+  pub(super) fn with_tombstone(version: u64, map: &'a super::SkipMap<K, V, C>, range: R) -> Self {
     let seeker = Seeker {
       map,
       query_version: version,
     };
 
     Self {
-      iter: Builder::new(seeker).range(version, range),
+      iter: Builder::new(seeker)
+        .with_comparator(&map.inner.comparator().0)
+        .range(version, range),
       version,
     }
   }
 }
 
-impl<'a, K, V, S, Q, R> Iterator for Range<'a, K, V, S, Q, R>
+impl<'a, K, V, S, Q, R, C> Iterator for Range<'a, K, V, S, Q, R, C>
 where
-  K: Ord + Comparable<Q> + 'static,
+  C: QueryComparator<K, Q> + 'static,
+  K: 'static,
   V: 'static,
   R: RangeBounds<Q>,
   Q: ?Sized,
   S: RangeState<K, V>,
-  S::Range<'a, Q, R>: Iterator<Item = MapEntry<'a, K, V>>,
+  S::Range<'a, Q, R, C>: Iterator<Item = MapEntry<'a, K, V, C>>,
 {
-  type Item = Entry<'a, K, V, S>;
+  type Item = Entry<'a, K, V, S, C>;
 
   #[inline]
   fn next(&mut self) -> Option<Self::Item> {
@@ -167,14 +179,15 @@ where
   }
 }
 
-impl<'a, K, V, S, Q, R> DoubleEndedIterator for Range<'a, K, V, S, Q, R>
+impl<'a, K, V, S, Q, R, C> DoubleEndedIterator for Range<'a, K, V, S, Q, R, C>
 where
-  K: Ord + Comparable<Q> + 'static,
+  C: QueryComparator<K, Q> + 'static,
+  K: 'static,
   V: 'static,
   Q: ?Sized,
   R: RangeBounds<Q>,
   S: RangeState<K, V>,
-  S::Range<'a, Q, R>: DoubleEndedIterator<Item = MapEntry<'a, K, V>>,
+  S::Range<'a, Q, R, C>: DoubleEndedIterator<Item = MapEntry<'a, K, V, C>>,
 {
   #[inline]
   fn next_back(&mut self) -> Option<Self::Item> {

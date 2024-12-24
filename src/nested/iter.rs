@@ -1,29 +1,33 @@
 use core::ops::{Bound, RangeBounds, RangeToInclusive};
 use std::marker::PhantomData;
 
-use crossbeam_skiplist::map::{Iter as CIter, Range as CRange};
-use dbutils::{equivalent::Comparable, state::State};
+use crossbeam_skiplist::{
+  equivalentor::{Comparator, QueryComparator},
+  map::{Iter as CIter, Range as CRange},
+  Ascend,
+};
+use dbutils::state::State;
 
 use super::{CEntry, Entry, Values};
 
-struct Latest<'a, K, V> {
-  values_iter: CRange<'a, u64, RangeToInclusive<u64>, u64, Option<V>>,
-  ent: CEntry<'a, K, Values<V>>,
+struct Latest<'a, K, V, C> {
+  values_iter: CRange<'a, u64, RangeToInclusive<u64>, u64, Option<V>, Ascend>,
+  ent: CEntry<'a, K, Values<V>, C>,
 }
 
 /// An iterator over the entries of a `SkipMap`.
-pub struct Iter<'a, K, V, S> {
-  iter: CIter<'a, K, Values<V>>,
+pub struct Iter<'a, K, V, S, C> {
+  iter: CIter<'a, K, Values<V>, C>,
   query_version: u64,
-  latest: Option<Latest<'a, K, V>>,
+  latest: Option<Latest<'a, K, V, C>>,
   _s: PhantomData<S>,
 }
 
-impl<'a, K, V, S> Iter<'a, K, V, S>
+impl<'a, K, V, S, C> Iter<'a, K, V, S, C>
 where
   S: State,
 {
-  pub(super) fn new(iter: CIter<'a, K, Values<V>>, query_version: u64) -> Self {
+  pub(super) fn new(iter: CIter<'a, K, Values<V>, C>, query_version: u64) -> Self {
     Self {
       iter,
       query_version,
@@ -33,12 +37,12 @@ where
   }
 }
 
-impl<'a, K, V, S> Iterator for Iter<'a, K, V, S>
+impl<'a, K, V, S, C> Iterator for Iter<'a, K, V, S, C>
 where
-  K: Ord,
+  C: Comparator<K>,
   S: State,
 {
-  type Item = Entry<'a, K, V, S>;
+  type Item = Entry<'a, K, V, S, C>;
 
   #[inline]
   fn next(&mut self) -> Option<Self::Item> {
@@ -81,9 +85,9 @@ where
   }
 }
 
-impl<K, V, S> DoubleEndedIterator for Iter<'_, K, V, S>
+impl<K, V, S, C> DoubleEndedIterator for Iter<'_, K, V, S, C>
 where
-  K: Ord,
+  C: Comparator<K>,
   S: State,
 {
   #[inline]
@@ -128,25 +132,23 @@ where
 }
 
 /// An iterator over a subset of entries of a `SkipMap`.
-pub struct Range<'a, K, V, S, Q, R>
+pub struct Range<'a, K, V, S, Q, R, C>
 where
-  K: Ord + Comparable<Q>,
   R: RangeBounds<Q>,
   Q: ?Sized,
 {
-  range: CRange<'a, Q, R, K, Values<V>>,
-  latest: Option<Latest<'a, K, V>>,
+  range: CRange<'a, Q, R, K, Values<V>, C>,
+  latest: Option<Latest<'a, K, V, C>>,
   query_version: u64,
   _s: PhantomData<S>,
 }
 
-impl<'a, K, V, S, Q, R> Range<'a, K, V, S, Q, R>
+impl<'a, K, V, S, Q, R, C> Range<'a, K, V, S, Q, R, C>
 where
-  K: Ord + Comparable<Q>,
   R: RangeBounds<Q>,
   Q: ?Sized,
 {
-  pub(super) fn new(range: CRange<'a, Q, R, K, Values<V>>, query_version: u64) -> Self {
+  pub(super) fn new(range: CRange<'a, Q, R, K, Values<V>, C>, query_version: u64) -> Self {
     Self {
       range,
       query_version,
@@ -156,14 +158,14 @@ where
   }
 }
 
-impl<'a, K, V, S, Q, R> Iterator for Range<'a, K, V, S, Q, R>
+impl<'a, K, V, S, Q, R, C> Iterator for Range<'a, K, V, S, Q, R, C>
 where
-  K: Ord + Comparable<Q>,
   R: RangeBounds<Q>,
   Q: ?Sized,
   S: State,
+  C: QueryComparator<K, Q>,
 {
-  type Item = Entry<'a, K, V, S>;
+  type Item = Entry<'a, K, V, S, C>;
 
   #[inline]
   fn next(&mut self) -> Option<Self::Item> {
@@ -206,12 +208,12 @@ where
   }
 }
 
-impl<K, V, S, Q, R> DoubleEndedIterator for Range<'_, K, V, S, Q, R>
+impl<K, V, S, Q, R, C> DoubleEndedIterator for Range<'_, K, V, S, Q, R, C>
 where
-  K: Ord + Comparable<Q>,
   R: RangeBounds<Q>,
   Q: ?Sized,
   S: State,
+  C: QueryComparator<K, Q>,
 {
   #[inline]
   fn next_back(&mut self) -> Option<Self::Item> {
