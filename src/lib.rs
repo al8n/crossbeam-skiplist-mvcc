@@ -238,10 +238,10 @@ pub use crossbeam_skiplist::{equivalentor, Ascend, Descend};
 
 pub use dbutils::state;
 
-/// Convert the data of the state to the output type.
-pub trait Output<'a, V: 'a>: sealed::Sealed<'a, V> {}
+/// Transfer the value from `V` to `Self::To`.
+pub trait Transfer<'a, V: 'a>: sealed::Sealed<'a, V> {}
 
-impl<'a, V: 'a, T> Output<'a, V> for T where T: sealed::Sealed<'a, V> {}
+impl<'a, V: 'a, T> Transfer<'a, V> for T where T: sealed::Sealed<'a, V> {}
 
 mod sealed {
   pub struct TombstoneValidator;
@@ -254,25 +254,25 @@ mod sealed {
   }
 
   pub trait Sealed<'a, V: 'a>: dbutils::state::State {
-    type Output: 'a;
+    type To: 'a;
 
-    fn output(data: Option<&'a V>) -> Self::Output;
+    fn output(data: Option<&'a V>) -> Self::To;
   }
 
   impl<'a, V: 'a> Sealed<'a, V> for dbutils::state::Active {
-    type Output = &'a V;
+    type To = &'a V;
 
     #[inline]
-    fn output(data: Option<&'a V>) -> Self::Output {
+    fn output(data: Option<&'a V>) -> Self::To {
       data.expect("entry in Active state must have a value")
     }
   }
 
   impl<'a, V: 'a> Sealed<'a, V> for dbutils::state::MaybeTombstone {
-    type Output = Option<&'a V>;
+    type To = Option<&'a V>;
 
     #[inline]
-    fn output(data: Option<&'a V>) -> Self::Output {
+    fn output(data: Option<&'a V>) -> Self::To {
       data
     }
   }

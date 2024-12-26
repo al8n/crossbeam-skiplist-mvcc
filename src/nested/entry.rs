@@ -3,7 +3,7 @@ use core::{fmt::Debug, marker::PhantomData, ops::Bound};
 use crossbeam_skiplist::{equivalentor::Comparator, map::Entry as CEntry, Ascend};
 use dbutils::state::State;
 
-use crate::Output;
+use crate::Transfer;
 
 use super::Values;
 
@@ -30,8 +30,8 @@ impl<'a, K, V, S, C> Debug for Entry<'a, K, V, S, C>
 where
   K: Debug,
   V: Debug,
-  S: Output<'a, V>,
-  S::Output: Debug,
+  S: Transfer<'a, V>,
+  S::To: Debug,
 {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     f.debug_struct("Entry")
@@ -57,9 +57,9 @@ impl<'a, K, V, S, C> Entry<'a, K, V, S, C> {
 
   /// Returns the value of the entry.
   #[inline]
-  pub fn value(&self) -> S::Output
+  pub fn value(&self) -> S::To
   where
-    S: Output<'a, V>,
+    S: Transfer<'a, V>,
   {
     S::output(self.value.value().as_ref())
   }

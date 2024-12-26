@@ -4,7 +4,7 @@ use crossbeam_skiplist::{equivalentor::Comparator, map};
 use dbutils::state::State;
 use snapshotor::{CursorExt, DoubleEndedCursorExt, Entry as _, NoopValidator};
 
-use crate::{sealed::TombstoneValidator, Output};
+use crate::{sealed::TombstoneValidator, Transfer};
 
 use super::{comparator::MultipleVersionsComparator, Key};
 
@@ -82,8 +82,8 @@ pub struct Entry<'a, K, V, S, C> {
 
 impl<'a, K: Debug, V: Debug, C, S> Debug for Entry<'a, K, V, S, C>
 where
-  S: Output<'a, V>,
-  S::Output: Debug,
+  S: Transfer<'a, V>,
+  S::To: Debug,
   K: Debug,
   V: Debug,
 {
@@ -122,9 +122,9 @@ impl<'a, K, V, S, C> Entry<'a, K, V, S, C> {
 
   /// Returns the value of the entry.
   #[inline]
-  pub fn value(&self) -> S::Output
+  pub fn value(&self) -> S::To
   where
-    S: Output<'a, V>,
+    S: Transfer<'a, V>,
   {
     S::output(self.ent.0.value().as_ref())
   }

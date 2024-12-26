@@ -784,7 +784,7 @@ impl<K, V, C> SkipMap<K, V, C> {
   /// ```
   pub fn range<Q, R>(&self, version: u64, range: R) -> Range<'_, K, V, Active, Q, R, C>
   where
-    K: Ord + Comparable<Q>,
+    K: Comparable<Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
   {
@@ -794,7 +794,7 @@ impl<K, V, C> SkipMap<K, V, C> {
   /// Returns an iterator over a subset of entries (with all versions) in the map.
   pub fn range_all<Q, R>(&self, version: u64, range: R) -> Range<'_, K, V, MaybeTombstone, Q, R, C>
   where
-    K: Ord + Comparable<Q>,
+    K: Comparable<Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
   {

@@ -36,44 +36,6 @@ impl<K> Key<K> {
   }
 }
 
-// impl<K> PartialEq for Key<K>
-// where
-//   K: PartialEq,
-// {
-//   #[inline]
-//   fn eq(&self, other: &Self) -> bool {
-//     self.key == other.key && self.version == other.version
-//   }
-// }
-
-// impl<K> Eq for Key<K> where K: Eq {}
-
-// impl<K> PartialOrd for Key<K>
-// where
-//   K: PartialOrd,
-// {
-//   #[inline]
-//   fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-//     self
-//       .key
-//       .partial_cmp(&other.key)
-//       .map(|o| o.then_with(|| other.version.cmp(&self.version)))
-//   }
-// }
-
-// impl<K> Ord for Key<K>
-// where
-//   K: Ord,
-// {
-//   #[inline]
-//   fn cmp(&self, other: &Self) -> cmp::Ordering {
-//     self
-//       .key
-//       .cmp(&other.key)
-//       .then_with(|| other.version.cmp(&self.version))
-//   }
-// }
-
 struct Query<'a, Q: ?Sized, K: ?Sized> {
   _m: PhantomData<K>,
   query: &'a Q,
@@ -90,28 +52,6 @@ impl<'a, Q: ?Sized, K: ?Sized> Query<'a, Q, K> {
     }
   }
 }
-
-// impl<Q, K> Equivalent<Query<'_, Q, K>> for Key<K>
-// where
-//   K: Equivalent<Q>,
-//   Q: ?Sized,
-// {
-//   #[inline]
-//   fn equivalent(&self, key: &Query<'_, Q, K>) -> bool {
-//     Equivalent::equivalent(&self.key, key.query) && key.version == self.version
-//   }
-// }
-
-// impl<Q, K> Comparable<Query<'_, Q, K>> for Key<K>
-// where
-//   C: QueryComparator<K, Q>,
-//   Q: ?Sized,
-// {
-//   #[inline]
-//   fn compare(&self, key: &Query<'_, Q, K>) -> cmp::Ordering {
-//     Comparable::compare(&self.key, key.query).then_with(|| key.version.cmp(&self.version))
-//   }
-// }
 
 /// A multiple version ordered map based on a lock-free skip list.
 ///
