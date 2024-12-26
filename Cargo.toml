@@ -1,6 +1,6 @@
 [package]
 name = "crossbeam-skiplist-mvcc"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 repository = "https://github.com/al8n/crossbeam-skiplist-mvcc"
 homepage = "https://github.com/al8n/crossbeam-skiplist-mvcc"

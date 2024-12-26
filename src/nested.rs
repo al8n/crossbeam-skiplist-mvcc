@@ -3,7 +3,11 @@ use core::{
   sync::atomic::{AtomicU64, Ordering},
 };
 
-use crossbeam_skiplist::{equivalentor::*, map::Entry as CEntry, Ascend, SkipMap as CSkipMap};
+use crossbeam_skiplist::{
+  equivalentor::{Comparator, QueryComparator},
+  map::Entry as CEntry,
+  Ascend, SkipMap as CSkipMap,
+};
 use dbutils::state::{Active, MaybeTombstone};
 
 mod iter;
@@ -784,7 +788,6 @@ impl<K, V, C> SkipMap<K, V, C> {
   /// ```
   pub fn range<Q, R>(&self, version: u64, range: R) -> Range<'_, K, V, Active, Q, R, C>
   where
-    K: Comparable<Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
   {
@@ -794,7 +797,6 @@ impl<K, V, C> SkipMap<K, V, C> {
   /// Returns an iterator over a subset of entries (with all versions) in the map.
   pub fn range_all<Q, R>(&self, version: u64, range: R) -> Range<'_, K, V, MaybeTombstone, Q, R, C>
   where
-    K: Comparable<Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
   {
