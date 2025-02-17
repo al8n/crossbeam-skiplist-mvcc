@@ -22,7 +22,7 @@ std = ["crossbeam-skiplist/std", "dbutils/std"]
 
 [dependencies]
 crossbeam-skiplist = { package = "crossbeam-skiplist-fd", version = "0.1" }
-dbutils = { version = "0.12", default-features = false }
+dbutils = { version = "0.14", default-features = false }
 snapshotor = { version = "0.2", default-features = false }
 
 [dev-dependencies]
